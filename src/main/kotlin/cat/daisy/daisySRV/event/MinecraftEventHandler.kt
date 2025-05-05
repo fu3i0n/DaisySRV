@@ -193,21 +193,25 @@ class MinecraftEventHandler(
      * @param message The message content
      */
     fun sendMessageToDiscord(username: String, message: String) {
+        val sanitizedMessage = message
+            .replace("@everyone", "@\u200Beveryone") // Prevent @everyone ping
+            .replace("@here", "@\u200Bhere")         // Prevent @here ping
+
         val format = plugin.config.getString(CONFIG_FORMAT_MC_TO_DISCORD) ?: DEFAULT_MC_TO_DISCORD_FORMAT
         val formattedMessage = format
             .replace("{username}", username)
-            .replace("{message}", message)
+            .replace("{message}", sanitizedMessage)
 
         // Run async to avoid blocking the main thread
         Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
             try {
                 discordChannel.sendMessage(formattedMessage).queue(
-                    { 
+                    {
                         if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
                             plugin.logger.info("Sent message to Discord: $formattedMessage")
                         }
                     },
-                    { error -> 
+                    { error ->
                         plugin.logger.log(Level.WARNING, "Failed to send message to Discord: ${error.message}")
                     }
                 )
