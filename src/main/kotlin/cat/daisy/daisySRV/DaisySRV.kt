@@ -70,7 +70,12 @@ class DaisySRV : JavaPlugin(), Listener {
         minecraftEventHandler?.sendServerStoppingMessage()
 
         // Shutdown Discord bot
-        jda?.shutdown()
+        try {
+            jda?.shutdownNow() // Ensures immediate termination of JDA resources
+            logger.info("JDA connection closed successfully.")
+        } catch (e: Exception) {
+            logger.log(Level.WARNING, "Error while shutting down JDA", e)
+        }
 
         // Clear webhook manager
         webhookManager = null
