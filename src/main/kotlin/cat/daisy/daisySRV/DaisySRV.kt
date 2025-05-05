@@ -60,7 +60,7 @@ class DaisySRV : JavaPlugin(), Listener {
         initializeDiscordBot()
 
         // Register command executor
-        getCommand("qdiscord")?.setExecutor(this)
+        getCommand("ddiscord")?.setExecutor(this)
 
         logger.info("DaisySRV has been enabled!")
     }
@@ -195,7 +195,7 @@ class DaisySRV : JavaPlugin(), Listener {
      * @return true if the command was handled, false otherwise
      */
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
-        if (command.name.equals("qdiscord", ignoreCase = true)) {
+        if (command.name.equals("ddiscord", ignoreCase = true)) {
             if (!sender.hasPermission("DaisySRV.admin")) {
                 sender.sendMessage("${ChatColor.RED}You don't have permission to use this command.")
                 return true
@@ -226,7 +226,7 @@ class DaisySRV : JavaPlugin(), Listener {
 
             // Show help message
             sender.sendMessage("${ChatColor.GOLD}DaisySRV Commands:")
-            sender.sendMessage("${ChatColor.YELLOW}/qdiscord reload ${ChatColor.GRAY}- Reload the configuration")
+            sender.sendMessage("${ChatColor.YELLOW}/ddiscord reload ${ChatColor.GRAY}- Reload the configuration")
             return true
         }
         return false
