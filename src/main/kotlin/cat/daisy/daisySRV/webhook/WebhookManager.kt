@@ -73,45 +73,38 @@ class WebhookManager(
      */
     fun sendPlayerMessage(player: Player, message: String) {
         if (!isWebhookEnabled()) return
-        
+
+        val sanitizedMessage = message
+            .replace("@everyone", "@\u200Beveryone") // Prevent @everyone ping
+            .replace("@here", "@\u200Bhere")         // Prevent @here ping
+
         val playerName = player.name
         val avatarUrl = getPlayerAvatarUrl(playerName)
-        
-        // Run async to avoid blocking the main thread
+
         Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
             try {
-                // Use the webhook URL directly with Discord's webhook API
                 val url = webhookUrl ?: return@Runnable
-                
-                // Create a JSON payload for the webhook
                 val jsonPayload = """
-                    {
-                        "content": "$message",
-                        "username": "$playerName",
-                        "avatar_url": "$avatarUrl"
-                    }
-                """.trimIndent()
-                
-                // Send the webhook request
+                {
+                    "content": "$sanitizedMessage",
+                    "username": "$playerName",
+                    "avatar_url": "$avatarUrl"
+                }
+            """.trimIndent()
+
                 val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 connection.requestMethod = "POST"
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.doOutput = true
-                
-                val outputStream = connection.outputStream
-                outputStream.write(jsonPayload.toByteArray())
-                outputStream.flush()
-                outputStream.close()
-                
-                val responseCode = connection.responseCode
-                if (responseCode == 204) {
-                    if (config.getBoolean(CONFIG_DEBUG, false)) {
-                        plugin.logger.info("Sent webhook message for player $playerName: $message")
-                    }
+
+                connection.outputStream.use { it.write(jsonPayload.toByteArray()) }
+
+                if (connection.responseCode == 204 && config.getBoolean(CONFIG_DEBUG, false)) {
+                    plugin.logger.info("Sent webhook message for player $playerName: $sanitizedMessage")
                 } else {
-                    plugin.logger.warning("Failed to send webhook message: HTTP $responseCode")
+                    plugin.logger.warning("Failed to send webhook message: HTTP ${connection.responseCode}")
                 }
-                
+
                 connection.disconnect()
             } catch (e: Exception) {
                 plugin.logger.log(Level.WARNING, "Failed to send webhook message", e)
@@ -128,42 +121,35 @@ class WebhookManager(
      */
     fun sendCustomMessage(name: String, avatarUrl: String, message: String) {
         if (!isWebhookEnabled()) return
-        
-        // Run async to avoid blocking the main thread
+
+        val sanitizedMessage = message
+            .replace("@everyone", "@\u200Beveryone") // Prevent @everyone ping
+            .replace("@here", "@\u200Bhere")         // Prevent @here ping
+
         Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
             try {
-                // Use the webhook URL directly with Discord's webhook API
                 val url = webhookUrl ?: return@Runnable
-                
-                // Create a JSON payload for the webhook
                 val jsonPayload = """
-                    {
-                        "content": "$message",
-                        "username": "$name",
-                        "avatar_url": "$avatarUrl"
-                    }
-                """.trimIndent()
-                
-                // Send the webhook request
+                {
+                    "content": "$sanitizedMessage",
+                    "username": "$name",
+                    "avatar_url": "$avatarUrl"
+                }
+            """.trimIndent()
+
                 val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 connection.requestMethod = "POST"
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.doOutput = true
-                
-                val outputStream = connection.outputStream
-                outputStream.write(jsonPayload.toByteArray())
-                outputStream.flush()
-                outputStream.close()
-                
-                val responseCode = connection.responseCode
-                if (responseCode == 204) {
-                    if (config.getBoolean(CONFIG_DEBUG, false)) {
-                        plugin.logger.info("Sent webhook message as $name: $message")
-                    }
+
+                connection.outputStream.use { it.write(jsonPayload.toByteArray()) }
+
+                if (connection.responseCode == 204 && config.getBoolean(CONFIG_DEBUG, false)) {
+                    plugin.logger.info("Sent webhook message as $name: $sanitizedMessage")
                 } else {
-                    plugin.logger.warning("Failed to send webhook message: HTTP $responseCode")
+                    plugin.logger.warning("Failed to send webhook message: HTTP ${connection.responseCode}")
                 }
-                
+
                 connection.disconnect()
             } catch (e: Exception) {
                 plugin.logger.log(Level.WARNING, "Failed to send webhook message", e)
