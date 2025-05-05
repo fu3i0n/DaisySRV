@@ -4,6 +4,7 @@ import cat.daisy.daisySRV.command.DiscordCommandHandler
 import cat.daisy.daisySRV.embed.EmbedManager
 import cat.daisy.daisySRV.event.MinecraftEventHandler
 import cat.daisy.daisySRV.status.BotStatusManager
+import cat.daisy.daisySRV.webhook.WebhookManager
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
@@ -49,6 +50,7 @@ class DaisySRV : JavaPlugin(), Listener {
     private var minecraftEventHandler: MinecraftEventHandler? = null
     private var discordCommandHandler: DiscordCommandHandler? = null
     private var botStatusManager: BotStatusManager? = null
+    private var webhookManager: WebhookManager? = null
 
     override fun onEnable() {
         // Save default config if it doesn't exist
@@ -69,6 +71,10 @@ class DaisySRV : JavaPlugin(), Listener {
 
         // Shutdown Discord bot
         jda?.shutdown()
+
+        // Clear webhook manager
+        webhookManager = null
+
         logger.info("DaisySRV has been disabled!")
     }
 
@@ -124,11 +130,14 @@ class DaisySRV : JavaPlugin(), Listener {
         // Create embed manager
         embedManager = EmbedManager(config)
 
+        // Create webhook manager
+        webhookManager = WebhookManager(this, discordChannel!!, config)
+
         // Create bot status manager
         botStatusManager = BotStatusManager(this, jda!!, config)
 
         // Create and register Minecraft event handler
-        minecraftEventHandler = MinecraftEventHandler(this, discordChannel!!, embedManager!!)
+        minecraftEventHandler = MinecraftEventHandler(this, discordChannel!!, embedManager!!, webhookManager)
         server.pluginManager.registerEvents(minecraftEventHandler!!, this)
 
         // Create and register Discord command handler
@@ -203,6 +212,7 @@ class DaisySRV : JavaPlugin(), Listener {
                 discordCommandHandler = null
                 botStatusManager = null
                 embedManager = null
+                webhookManager = null
 
                 // Reload config
                 reloadConfig()

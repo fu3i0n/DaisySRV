@@ -68,6 +68,20 @@ status:
   # Available placeholders: {playerCount}, {maxPlayers}
   format: "{playerCount}/{maxPlayers} players online"
 
+# Webhook Configuration
+webhook:
+  # Whether to use webhooks for player messages (shows player avatars and names)
+  enabled: false
+
+  # Your Discord webhook URL (KEEP THIS SECRET!)
+  url: "YOUR_WEBHOOK_URL_HERE"
+
+  # Default webhook name (used for system messages)
+  name: "DaisySRV"
+
+  # Avatar URL template for players (use {username} as placeholder)
+  avatar-url: "https://www.mc-heads.net/avatar/{username}"
+
 # General Settings
 settings:
   # Whether to enable debug logging

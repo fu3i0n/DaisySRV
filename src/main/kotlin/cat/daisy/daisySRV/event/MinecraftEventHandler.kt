@@ -2,6 +2,7 @@ package cat.daisy.daisySRV.event
 
 import cat.daisy.daisySRV.DaisySRV
 import cat.daisy.daisySRV.embed.EmbedManager
+import cat.daisy.daisySRV.webhook.WebhookManager
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
 import org.bukkit.Bukkit
 import org.bukkit.advancement.Advancement
@@ -21,7 +22,8 @@ import java.util.logging.Level
 class MinecraftEventHandler(
     private val plugin: DaisySRV,
     private val discordChannel: TextChannel,
-    private val embedManager: EmbedManager
+    private val embedManager: EmbedManager,
+    private val webhookManager: WebhookManager? = null
 ) : Listener {
 
     companion object {
@@ -48,8 +50,13 @@ class MinecraftEventHandler(
         val player = event.player
         val message = event.message
 
-        // Send message to Discord
-        sendMessageToDiscord(player.name, message)
+        // If webhook is enabled and initialized, use it to send the message with player avatar
+        if (webhookManager != null && webhookManager.isWebhookEnabled()) {
+            webhookManager.sendPlayerMessage(player, message)
+        } else {
+            // Fall back to regular Discord message
+            sendMessageToDiscord(player.name, message)
+        }
     }
 
     /**
@@ -172,10 +179,10 @@ class MinecraftEventHandler(
         // Send embed to Discord
         if (embedManager.areEmbedsEnabled()) {
             val embed = embedManager.createServerStatusEmbed(false)
-            sendEmbedToDiscord(embed)
+            sendEmbedToDiscordSync(embed)
         } else {
             // Fallback to text message
-            sendSystemMessageToDiscord("Server is now offline")
+            sendSystemMessageToDiscordSync("Server is now offline")
         }
     }
 
@@ -258,6 +265,40 @@ class MinecraftEventHandler(
                 plugin.logger.log(Level.WARNING, "Failed to send embed to Discord", e)
             }
         })
+    }
+
+    /**
+     * Sends an embed to Discord synchronously
+     * This method is used during server shutdown when tasks cannot be scheduled
+     * 
+     * @param embed The MessageEmbed to send
+     */
+    private fun sendEmbedToDiscordSync(embed: net.dv8tion.jda.api.entities.MessageEmbed) {
+        try {
+            discordChannel.sendMessageEmbeds(embed).complete()
+            if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
+                plugin.logger.info("Sent embed to Discord synchronously: ${embed.getTitle()}")
+            }
+        } catch (e: Exception) {
+            plugin.logger.log(Level.WARNING, "Failed to send embed to Discord synchronously", e)
+        }
+    }
+
+    /**
+     * Sends a system message to Discord synchronously
+     * This method is used during server shutdown when tasks cannot be scheduled
+     * 
+     * @param message The message content
+     */
+    private fun sendSystemMessageToDiscordSync(message: String) {
+        try {
+            discordChannel.sendMessage(message).complete()
+            if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
+                plugin.logger.info("Sent system message to Discord synchronously: $message")
+            }
+        } catch (e: Exception) {
+            plugin.logger.log(Level.WARNING, "Failed to send system message to Discord synchronously", e)
+        }
     }
 
     /**

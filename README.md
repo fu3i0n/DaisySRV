@@ -11,6 +11,7 @@ An enhanced Minecraft-Discord chat bridge plugin for Paper servers with rich emb
 - Server status notifications (online/offline)
 - Discord slash commands (e.g., `/playerlist`)
 - Bot status showing player count
+- Webhook support for player messages with avatars and names
 - Customizable message formats and colors
 - Simple setup and configuration
 
@@ -50,7 +51,18 @@ An enhanced Minecraft-Discord chat bridge plugin for Paper servers with rich emb
 1. In Discord, go to User Settings > Advanced and enable "Developer Mode"
 2. Right-click on the channel you want to use and select "Copy ID"
 
-### 4. Install the Plugin
+### 4. (Optional) Create a Webhook for Player Messages
+
+If you want player messages to be sent with their Minecraft username and avatar:
+
+1. In Discord, go to the channel settings
+2. Click on "Integrations"
+3. Click on "Webhooks"
+4. Click "New Webhook"
+5. Give it a name (e.g., "DaisySRV")
+6. Click "Copy Webhook URL" (you'll need this for the config)
+
+### 5. Install the Plugin
 
 1. Download the DaisySRV.jar file
 2. Place it in your server's `plugins` folder
@@ -58,6 +70,8 @@ An enhanced Minecraft-Discord chat bridge plugin for Paper servers with rich emb
 4. Edit the `plugins/DaisySRV/config.yml` file:
    - Set `discord.token` to your bot token
    - Set `discord.channel-id` to your channel ID
+   - (Optional) Set `webhook.enabled` to `true`
+   - (Optional) Set `webhook.url` to your webhook URL
 5. Run the command `/qdiscord reload` in-game or restart your server
 
 ## Configuration
@@ -132,6 +146,20 @@ status:
   # Format for the status message
   # Available placeholders: {playerCount}, {maxPlayers}
   format: "{playerCount}/{maxPlayers} players online"
+
+# Webhook Configuration
+webhook:
+  # Whether to use webhooks for player messages (shows player avatars and names)
+  enabled: false
+
+  # Your Discord webhook URL (KEEP THIS SECRET!)
+  url: "YOUR_WEBHOOK_URL_HERE"
+
+  # Default webhook name (used for system messages)
+  name: "DaisySRV"
+
+  # Avatar URL template for players (use {username} as placeholder)
+  avatar-url: "https://www.mc-heads.net/avatar/{username}"
 
 # General Settings
 settings:
