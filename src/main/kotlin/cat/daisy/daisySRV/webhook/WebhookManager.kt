@@ -99,8 +99,10 @@ class WebhookManager(
 
                 connection.outputStream.use { it.write(jsonPayload.toByteArray()) }
 
-                if (connection.responseCode == 204 && config.getBoolean(CONFIG_DEBUG, false)) {
-                    plugin.logger.info("Sent webhook message for player $playerName: $sanitizedMessage")
+                if (connection.responseCode == 204) {
+                    if (config.getBoolean(CONFIG_DEBUG, false)) {
+                        plugin.logger.info("Sent webhook message successfully: $sanitizedMessage")
+                    }
                 } else {
                     plugin.logger.warning("Failed to send webhook message: HTTP ${connection.responseCode}")
                 }
