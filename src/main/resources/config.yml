@@ -1,0 +1,77 @@
+# DaisySRV Configuration
+
+# Discord Bot Configuration
+discord:
+  # Your Discord bot token (KEEP THIS SECRET!)
+  token: "YOUR_BOT_TOKEN_HERE"
+
+  # The Discord channel ID to send/receive messages
+  channel-id: "YOUR_CHANNEL_ID_HERE"
+
+# Message Format Configuration
+format:
+  # Format for Discord messages sent to Minecraft
+  # Available placeholders: {username}, {message}
+  discord-to-minecraft: "&b[Discord] &f{username}: &7{message}"
+
+  # Format for Minecraft messages sent to Discord
+  # Available placeholders: {username}, {message}
+  minecraft-to-discord: "**{username}**: {message}"
+
+# Embed Configuration
+embeds:
+  # Whether to use embeds for events
+  enabled: true
+
+  # Colors for different types of embeds (hex color codes)
+  colors:
+    join: "#55FF55"       # Green
+    leave: "#FF5555"      # Red
+    achievement: "#FFAA00" # Gold
+    server: "#55FFFF"     # Aqua
+    playerlist: "#5555FF" # Blue
+
+# Event Configuration
+events:
+  # Whether to send messages when players join
+  player-join: true
+
+  # Whether to send messages when players leave
+  player-quit: true
+
+  # Whether to send messages when players earn achievements
+  player-advancement: true
+
+  # Whether to send a message when the server starts
+  server-start: true
+
+  # Whether to send a message when the server stops
+  server-stop: true
+
+# Command Configuration
+commands:
+  # Whether to enable Discord slash commands
+  enabled: true
+
+  # Whether to enable the playerlist command
+  playerlist: true
+
+# Bot Status Configuration
+status:
+  # Whether to show player count in bot status
+  enabled: true
+
+  # Type of status (PLAYING, WATCHING, LISTENING, COMPETING)
+  type: "PLAYING"
+
+  # Format for the status message
+  # Available placeholders: {playerCount}, {maxPlayers}
+  format: "{playerCount}/{maxPlayers} players online"
+
+# General Settings
+settings:
+  # Whether to enable debug logging
+  debug: false
+
+  # Whether to forward console messages to Discord
+  forward-console: false

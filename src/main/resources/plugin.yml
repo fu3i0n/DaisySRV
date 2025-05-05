@@ -1,0 +1,16 @@
+name: DaisySRV
+version: '1.0'
+main: cat.daisy.daisySRV.DaisySRV
+api-version: '1.21'
+description: 'A simple Discord-Minecraft chat bridge'
+
+commands:
+  ddiscord:
+    description: DaisySRV main command
+    usage: /ddiscord [reload]
+    permission: daisysrv.admin
+
+permissions:
+  daisysrv.admin:
+    description: Allows access to DaisySRV admin commands
+    default: op
