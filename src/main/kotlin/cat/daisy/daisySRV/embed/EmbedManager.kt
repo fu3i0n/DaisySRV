@@ -86,7 +86,6 @@ class EmbedManager(private val config: FileConfiguration) {
             .setColor(color)
             .setTitle("Achievement Unlocked")
             .setDescription("**$playerName** earned the achievement **$achievementName**")
-            .addField("Description", achievementDescription, false)
             .setTimestamp(Instant.now())
             .build()
     }

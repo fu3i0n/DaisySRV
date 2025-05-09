@@ -76,9 +76,16 @@ class DaisySRV : JavaPlugin(), Listener {
         } catch (e: Exception) {
             logger.log(Level.WARNING, "Error while shutting down JDA", e)
         }
+        try {
+            // Clear webhook manager
+            webhookManager?.isWebhookEnabled() == false
+            webhookManager = null
+            logger.info("Webhook connection closed successfully.")
+        } catch (e: Exception) {
+            logger.log(Level.WARNING, "Error while shutting down Webhooks", e)
+        }
 
-        // Clear webhook manager
-        webhookManager = null
+
 
         logger.info("DaisySRV has been disabled!")
     }
