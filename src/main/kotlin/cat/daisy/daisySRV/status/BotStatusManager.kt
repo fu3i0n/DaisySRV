@@ -12,9 +12,8 @@ import java.util.logging.Level
 class BotStatusManager(
     private val plugin: JavaPlugin,
     private val jda: JDA,
-    private val config: FileConfiguration
+    private val config: FileConfiguration,
 ) {
-
     companion object {
         // Configuration paths
         private const val CONFIG_STATUS_ENABLED = "status.enabled"
@@ -28,11 +27,14 @@ class BotStatusManager(
 
     /**
      * Updates the bot's status with the current player count
-     * 
+     *
      * @param playerCount The current player count
      * @param maxPlayers The maximum player count
      */
-    fun updateStatus(playerCount: Int, maxPlayers: Int) {
+    fun updateStatus(
+        playerCount: Int,
+        maxPlayers: Int,
+    ) {
         // Check if status updates are enabled
         if (!config.getBoolean(CONFIG_STATUS_ENABLED, true)) return
 
@@ -41,9 +43,10 @@ class BotStatusManager(
             val format = config.getString(CONFIG_STATUS_FORMAT) ?: DEFAULT_STATUS_FORMAT
 
             // Format the status message
-            val statusMessage = format
-                .replace("{playerCount}", playerCount.toString())
-                .replace("{maxPlayers}", maxPlayers.toString())
+            val statusMessage =
+                format
+                    .replace("{playerCount}", playerCount.toString())
+                    .replace("{maxPlayers}", maxPlayers.toString())
 
             // Get the activity type from config
             val activityType = getActivityType(config.getString(CONFIG_STATUS_TYPE) ?: "PLAYING")
@@ -61,12 +64,12 @@ class BotStatusManager(
 
     /**
      * Gets the Activity.ActivityType from a string
-     * 
+     *
      * @param type The activity type as a string
      * @return The ActivityType enum value
      */
-    private fun getActivityType(type: String): Activity.ActivityType {
-        return when (type.uppercase()) {
+    private fun getActivityType(type: String): Activity.ActivityType =
+        when (type.uppercase()) {
             "PLAYING" -> Activity.ActivityType.PLAYING
             "WATCHING" -> Activity.ActivityType.WATCHING
             "LISTENING" -> Activity.ActivityType.LISTENING
@@ -74,5 +77,4 @@ class BotStatusManager(
             "STREAMING" -> Activity.ActivityType.STREAMING
             else -> Activity.ActivityType.PLAYING // Default to PLAYING
         }
-    }
 }

@@ -15,13 +15,17 @@ repositories {
     maven("https://oss.sonatype.org/content/groups/public/")
 }
 
+val versions =
+    mapOf(
+        "ktlint" to "1.5.0",
+    )
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("net.dv8tion:JDA:5.5.1") {
         exclude(module = "opus-java")
     }
-    ktlint("com.pinterest.ktlint:ktlint-cli:1.5.0}") {
+    ktlint("com.pinterest.ktlint:ktlint-cli:${versions["ktlint"]}") {
         attributes {
             attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))
         }
@@ -143,5 +147,3 @@ tasks {
         }
     }
 }
-
-

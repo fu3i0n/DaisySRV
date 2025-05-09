@@ -20,10 +20,10 @@ import java.util.logging.Level
 
 /**
  * DaisySRV - A Discord-Minecraft chat bridge plugin with enhanced features
- * 
+ *
  * This plugin connects your Minecraft server chat with a Discord channel,
  * allowing messages to be sent between both platforms seamlessly.
- * 
+ *
  * Features:
  * - Discord to Minecraft chat bridge
  * - Minecraft to Discord chat bridge
@@ -31,8 +31,9 @@ import java.util.logging.Level
  * - Discord slash commands for player list
  * - Bot status showing player count
  */
-class DaisySRV : JavaPlugin(), Listener {
-
+class DaisySRV :
+    JavaPlugin(),
+    Listener {
     companion object {
         // Configuration paths
         private const val CONFIG_DISCORD_TOKEN = "discord.token"
@@ -85,8 +86,6 @@ class DaisySRV : JavaPlugin(), Listener {
             logger.log(Level.WARNING, "Error while shutting down Webhooks", e)
         }
 
-
-
         logger.info("DaisySRV has been disabled!")
     }
 
@@ -103,13 +102,15 @@ class DaisySRV : JavaPlugin(), Listener {
 
         try {
             // Build JDA instance with optimized settings
-            jda = JDABuilder.createDefault(token)
-                .enableIntents(GatewayIntent.MESSAGE_CONTENT, GatewayIntent.GUILD_MEMBERS)
-                .enableCache(CacheFlag.MEMBER_OVERRIDES)
-                .disableCache(CacheFlag.VOICE_STATE, CacheFlag.EMOJI, CacheFlag.STICKER, CacheFlag.SCHEDULED_EVENTS)
-                .setAutoReconnect(true)
-                .build()
-                .awaitReady()
+            jda =
+                JDABuilder
+                    .createDefault(token)
+                    .enableIntents(GatewayIntent.MESSAGE_CONTENT, GatewayIntent.GUILD_MEMBERS)
+                    .enableCache(CacheFlag.MEMBER_OVERRIDES)
+                    .disableCache(CacheFlag.VOICE_STATE, CacheFlag.EMOJI, CacheFlag.STICKER, CacheFlag.SCHEDULED_EVENTS)
+                    .setAutoReconnect(true)
+                    .build()
+                    .awaitReady()
 
             // Get the Discord channel
             val channelId = config.getString(CONFIG_DISCORD_CHANNEL_ID)
@@ -168,45 +169,63 @@ class DaisySRV : JavaPlugin(), Listener {
 
     /**
      * Sends a message from Discord to Minecraft
-     * 
+     *
      * @param username The Discord username
      * @param message The message content
      */
-    fun sendMessageToMinecraft(username: String, message: String) {
+    fun sendMessageToMinecraft(
+        username: String,
+        message: String,
+    ) {
         val format = config.getString(CONFIG_FORMAT_DISCORD_TO_MC) ?: DEFAULT_DISCORD_TO_MC_FORMAT
-        val formattedMessage = ChatColor.translateAlternateColorCodes('&', format
-            .replace("{username}", username)
-            .replace("{message}", message))
+        val formattedMessage =
+            ChatColor.translateAlternateColorCodes(
+                '&',
+                format
+                    .replace("{username}", username)
+                    .replace("{message}", message),
+            )
 
         // Run on the main thread since Bukkit API is not thread-safe
-        Bukkit.getScheduler().runTask(this, Runnable {
-            Bukkit.broadcastMessage(formattedMessage)
-            if (config.getBoolean(CONFIG_DEBUG, false)) {
-                logger.info("Sent message to Minecraft: $formattedMessage")
-            }
-        })
+        Bukkit.getScheduler().runTask(
+            this,
+            Runnable {
+                Bukkit.broadcastMessage(formattedMessage)
+                if (config.getBoolean(CONFIG_DEBUG, false)) {
+                    logger.info("Sent message to Minecraft: $formattedMessage")
+                }
+            },
+        )
     }
 
     /**
      * Updates the bot's status with the current player count
-     * 
+     *
      * @param playerCount The current player count
      * @param maxPlayers The maximum player count
      */
-    fun updateBotStatus(playerCount: Int, maxPlayers: Int) {
+    fun updateBotStatus(
+        playerCount: Int,
+        maxPlayers: Int,
+    ) {
         botStatusManager?.updateStatus(playerCount, maxPlayers)
     }
 
     /**
      * Handles plugin commands
-     * 
+     *
      * @param sender The command sender
      * @param command The command being executed
      * @param label The command label used
      * @param args The command arguments
      * @return true if the command was handled, false otherwise
      */
-    override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
+    override fun onCommand(
+        sender: CommandSender,
+        command: Command,
+        label: String,
+        args: Array<out String>,
+    ): Boolean {
         if (command.name.equals("ddiscord", ignoreCase = true)) {
             if (!sender.hasPermission("DaisySRV.admin")) {
                 sender.sendMessage("${ChatColor.RED}You don't have permission to use this command.")
@@ -248,10 +267,12 @@ class DaisySRV : JavaPlugin(), Listener {
      * Inner class for handling Discord messages
      * Listens for messages in the configured channel and forwards them to Minecraft
      */
-    private inner class DiscordListener(private val plugin: DaisySRV) : net.dv8tion.jda.api.hooks.ListenerAdapter() {
+    private inner class DiscordListener(
+        private val plugin: DaisySRV,
+    ) : net.dv8tion.jda.api.hooks.ListenerAdapter() {
         /**
          * Handles incoming Discord messages
-         * 
+         *
          * @param event The message received event
          */
         override fun onMessageReceived(event: net.dv8tion.jda.api.events.message.MessageReceivedEvent) {

@@ -23,9 +23,8 @@ class MinecraftEventHandler(
     private val plugin: DaisySRV,
     private val discordChannel: TextChannel,
     private val embedManager: EmbedManager,
-    private val webhookManager: WebhookManager? = null
+    private val webhookManager: WebhookManager? = null,
 ) : Listener {
-
     companion object {
         // Configuration paths
         private const val CONFIG_EVENTS_PLAYER_JOIN = "events.player-join"
@@ -42,7 +41,7 @@ class MinecraftEventHandler(
 
     /**
      * Handles player chat events and forwards them to Discord
-     * 
+     *
      * @param event The AsyncPlayerChatEvent containing the player and message
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -61,7 +60,7 @@ class MinecraftEventHandler(
 
     /**
      * Handles player join events and sends an embed to Discord
-     * 
+     *
      * @param event The PlayerJoinEvent
      */
     @EventHandler(priority = EventPriority.MONITOR)
@@ -86,7 +85,7 @@ class MinecraftEventHandler(
 
     /**
      * Handles player quit events and sends an embed to Discord
-     * 
+     *
      * @param event The PlayerQuitEvent
      */
     @EventHandler(priority = EventPriority.MONITOR)
@@ -111,7 +110,7 @@ class MinecraftEventHandler(
 
     /**
      * Handles player advancement events and sends an embed to Discord
-     * 
+     *
      * @param event The PlayerAdvancementDoneEvent
      */
     @EventHandler(priority = EventPriority.MONITOR)
@@ -136,13 +135,13 @@ class MinecraftEventHandler(
             sendEmbedToDiscord(embed)
         } else {
             // Fallback to text message
-            sendSystemMessageToDiscord("${player.name} earned the achievement ${advancementName}")
+            sendSystemMessageToDiscord("${player.name} earned the achievement $advancementName")
         }
     }
 
     /**
      * Handles server load events and sends an embed to Discord
-     * 
+     *
      * @param event The ServerLoadEvent
      */
     @EventHandler(priority = EventPriority.MONITOR)
@@ -151,21 +150,25 @@ class MinecraftEventHandler(
         if (!plugin.config.getBoolean(CONFIG_EVENTS_SERVER_START, true)) return
 
         // Wait a bit to ensure the server is fully started
-        Bukkit.getScheduler().runTaskLater(plugin, Runnable {
-            // Update player count in bot status
-            updatePlayerCount()
+        Bukkit.getScheduler().runTaskLater(
+            plugin,
+            Runnable {
+                // Update player count in bot status
+                updatePlayerCount()
 
-            // Send embed to Discord
-            if (embedManager.areEmbedsEnabled()) {
-                val playerCount = Bukkit.getOnlinePlayers().size
-                val maxPlayers = Bukkit.getMaxPlayers()
-                val embed = embedManager.createServerStatusEmbed(true, playerCount, maxPlayers)
-                sendEmbedToDiscord(embed)
-            } else {
-                // Fallback to text message
-                sendSystemMessageToDiscord("Server is now online")
-            }
-        }, 40L) // Wait 2 seconds (40 ticks)
+                // Send embed to Discord
+                if (embedManager.areEmbedsEnabled()) {
+                    val playerCount = Bukkit.getOnlinePlayers().size
+                    val maxPlayers = Bukkit.getMaxPlayers()
+                    val embed = embedManager.createServerStatusEmbed(true, playerCount, maxPlayers)
+                    sendEmbedToDiscord(embed)
+                } else {
+                    // Fallback to text message
+                    sendSystemMessageToDiscord("Server is now online")
+                }
+            },
+            40L,
+        ) // Wait 2 seconds (40 ticks)
     }
 
     /**
@@ -188,93 +191,107 @@ class MinecraftEventHandler(
 
     /**
      * Sends a message from Minecraft to Discord
-     * 
+     *
      * @param username The Minecraft username
      * @param message The message content
      */
-    fun sendMessageToDiscord(username: String, message: String) {
-        val sanitizedMessage = message
-            .replace("@everyone", "@\u200Beveryone") // Prevent @everyone ping
-            .replace("@here", "@\u200Bhere")         // Prevent @here ping
+    fun sendMessageToDiscord(
+        username: String,
+        message: String,
+    ) {
+        val sanitizedMessage =
+            message
+                .replace("@everyone", "@\u200Beveryone") // Prevent @everyone ping
+                .replace("@here", "@\u200Bhere") // Prevent @here ping
 
         val format = plugin.config.getString(CONFIG_FORMAT_MC_TO_DISCORD) ?: DEFAULT_MC_TO_DISCORD_FORMAT
-        val formattedMessage = format
-            .replace("{username}", username)
-            .replace("{message}", sanitizedMessage)
+        val formattedMessage =
+            format
+                .replace("{username}", username)
+                .replace("{message}", sanitizedMessage)
 
         // Run async to avoid blocking the main thread
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
-            try {
-                discordChannel.sendMessage(formattedMessage).queue(
-                    {
-                        if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
-                            plugin.logger.info("Sent message to Discord: $formattedMessage")
-                        }
-                    },
-                    { error ->
-                        plugin.logger.log(Level.WARNING, "Failed to send message to Discord: ${error.message}")
-                    }
-                )
-            } catch (e: Exception) {
-                plugin.logger.log(Level.WARNING, "Failed to send message to Discord", e)
-            }
-        })
+        Bukkit.getScheduler().runTaskAsynchronously(
+            plugin,
+            Runnable {
+                try {
+                    discordChannel.sendMessage(formattedMessage).queue(
+                        {
+                            if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
+                                plugin.logger.info("Sent message to Discord: $formattedMessage")
+                            }
+                        },
+                        { error ->
+                            plugin.logger.log(Level.WARNING, "Failed to send message to Discord: ${error.message}")
+                        },
+                    )
+                } catch (e: Exception) {
+                    plugin.logger.log(Level.WARNING, "Failed to send message to Discord", e)
+                }
+            },
+        )
     }
 
     /**
      * Sends a system message to Discord
-     * 
+     *
      * @param message The message content
      */
     private fun sendSystemMessageToDiscord(message: String) {
         // Run async to avoid blocking the main thread
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
-            try {
-                discordChannel.sendMessage(message).queue(
-                    { 
-                        if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
-                            plugin.logger.info("Sent system message to Discord: $message")
-                        }
-                    },
-                    { error -> 
-                        plugin.logger.log(Level.WARNING, "Failed to send system message to Discord: ${error.message}")
-                    }
-                )
-            } catch (e: Exception) {
-                plugin.logger.log(Level.WARNING, "Failed to send system message to Discord", e)
-            }
-        })
+        Bukkit.getScheduler().runTaskAsynchronously(
+            plugin,
+            Runnable {
+                try {
+                    discordChannel.sendMessage(message).queue(
+                        {
+                            if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
+                                plugin.logger.info("Sent system message to Discord: $message")
+                            }
+                        },
+                        { error ->
+                            plugin.logger.log(Level.WARNING, "Failed to send system message to Discord: ${error.message}")
+                        },
+                    )
+                } catch (e: Exception) {
+                    plugin.logger.log(Level.WARNING, "Failed to send system message to Discord", e)
+                }
+            },
+        )
     }
 
     /**
      * Sends an embed to Discord
-     * 
+     *
      * @param embed The MessageEmbed to send
      */
     private fun sendEmbedToDiscord(embed: net.dv8tion.jda.api.entities.MessageEmbed) {
         // Run async to avoid blocking the main thread
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
-            try {
-                discordChannel.sendMessageEmbeds(embed).queue(
-                    { 
-                        if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
-                            plugin.logger.info("Sent embed to Discord: ${embed.getTitle()}")
-                        }
-                    },
-                    { error -> 
-                        plugin.logger.log(Level.WARNING, "Failed to send embed to Discord: ${error.message}")
-                    }
-                )
-            } catch (e: Exception) {
-                plugin.logger.log(Level.WARNING, "Failed to send embed to Discord", e)
-            }
-        })
+        Bukkit.getScheduler().runTaskAsynchronously(
+            plugin,
+            Runnable {
+                try {
+                    discordChannel.sendMessageEmbeds(embed).queue(
+                        {
+                            if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
+                                plugin.logger.info("Sent embed to Discord: ${embed.getTitle()}")
+                            }
+                        },
+                        { error ->
+                            plugin.logger.log(Level.WARNING, "Failed to send embed to Discord: ${error.message}")
+                        },
+                    )
+                } catch (e: Exception) {
+                    plugin.logger.log(Level.WARNING, "Failed to send embed to Discord", e)
+                }
+            },
+        )
     }
 
     /**
      * Sends an embed to Discord synchronously
      * This method is used during server shutdown when tasks cannot be scheduled
-     * 
+     *
      * @param embed The MessageEmbed to send
      */
     private fun sendEmbedToDiscordSync(embed: net.dv8tion.jda.api.entities.MessageEmbed) {
@@ -291,7 +308,7 @@ class MinecraftEventHandler(
     /**
      * Sends a system message to Discord synchronously
      * This method is used during server shutdown when tasks cannot be scheduled
-     * 
+     *
      * @param message The message content
      */
     private fun sendSystemMessageToDiscordSync(message: String) {
@@ -326,17 +343,15 @@ class MinecraftEventHandler(
 
     /**
      * Checks if an advancement is a recipe
-     * 
+     *
      * @param advancement The advancement to check
      * @return true if it's a recipe, false otherwise
      */
-    private fun isRecipeAdvancement(advancement: Advancement): Boolean {
-        return advancement.key.key.startsWith("recipes/")
-    }
+    private fun isRecipeAdvancement(advancement: Advancement): Boolean = advancement.key.key.startsWith("recipes/")
 
     /**
      * Checks if an advancement has a display
-     * 
+     *
      * @param advancement The advancement to check
      * @return true if it has a display, false otherwise
      */
@@ -359,7 +374,7 @@ class MinecraftEventHandler(
 
     /**
      * Gets the name of an advancement
-     * 
+     *
      * @param advancement The advancement
      * @return The advancement name or key if not found
      */
@@ -388,12 +403,16 @@ class MinecraftEventHandler(
         }
 
         // Fallback to key
-        return advancement.key.key.split("/").last().replace("_", " ").capitalize()
+        return advancement.key.key
+            .split("/")
+            .last()
+            .replace("_", " ")
+            .capitalize()
     }
 
     /**
      * Gets the description of an advancement
-     * 
+     *
      * @param advancement The advancement
      * @return The advancement description or empty string if not found
      */
