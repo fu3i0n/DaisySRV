@@ -75,10 +75,7 @@ class WebhookManager(
     ) {
         if (!isWebhookEnabled()) return
 
-        val sanitizedMessage =
-            message
-                .replace("@everyone", "@\u200Beveryone") // Prevent @everyone ping
-                .replace("@here", "@\u200Bhere") // Prevent @here ping
+        val sanitizedMessage = message.replace(Regex("@\\S+"), "@\u200B")
 
         val playerName = player.name
         val avatarUrl = getPlayerAvatarUrl(playerName)
