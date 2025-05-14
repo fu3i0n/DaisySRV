@@ -44,7 +44,7 @@ class MinecraftEventHandler(
      *
      * @param event The AsyncPlayerChatEvent containing the player and message
      */
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     fun onPlayerChat(event: AsyncPlayerChatEvent) {
         val player = event.player
         val message = event.message
