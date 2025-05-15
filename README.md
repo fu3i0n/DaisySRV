@@ -174,7 +174,7 @@ settings:
 
 The plugin adds the following Discord slash commands:
 
-- `/playerlist` - Shows a list of online players with an embed
+- `/players` - Shows a list of online players with an embed
 
 ## Minecraft Commands
 
