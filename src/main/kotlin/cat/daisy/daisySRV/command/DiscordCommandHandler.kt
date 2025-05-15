@@ -7,6 +7,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.commands.build.Commands
 import org.bukkit.Bukkit
+import java.util.logging.Level
 
 /**
  * Handles Discord slash commands
@@ -23,75 +24,117 @@ class DiscordCommandHandler(
         private const val CONFIG_DEBUG = "settings.debug"
     }
 
+    private var commandsRegistered = false
+
     /**
-     * Registers all slash commands with Discord
+     * Registers slash commands with Discord
      */
     fun registerCommands() {
-        // Check if commands are enabled
         if (!plugin.config.getBoolean(CONFIG_COMMANDS_ENABLED, true)) {
-            plugin.logger.info("Discord commands are disabled in config")
+            plugin.logger.info("Discord slash commands are disabled in the config")
             return
         }
 
-        // Create a list to hold our commands
-        val commands = mutableListOf<net.dv8tion.jda.api.interactions.commands.build.CommandData>()
+        try {
+            // Create command data
+            val commandData =
+                mutableListOf(
+                    Commands.slash("ping", "Check if the bot is online"),
+                )
 
-        // Add playerlist command if enabled
-        if (plugin.config.getBoolean(CONFIG_COMMANDS_PLAYERLIST, true)) {
-            commands.add(
-                Commands.slash("playerlist", "Shows the list of online players"),
-            )
+            // Add player list command if enabled
+            if (plugin.config.getBoolean(CONFIG_COMMANDS_PLAYERLIST, true)) {
+                commandData.add(Commands.slash("players", "List online players"))
+            }
+
+            // Register commands for each guild the bot is in
+            jda.guilds.forEach { guild ->
+                guild.updateCommands().addCommands(commandData).queue(
+                    {
+                        plugin.logger.info("Registered ${commandData.size} Discord slash commands in guild ${guild.name}")
+                        commandsRegistered = true
+                    },
+                    { error ->
+                        plugin.logger.log(Level.WARNING, "Failed to register Discord slash commands in guild ${guild.name}", error)
+                    },
+                )
+            }
+
+            // Always register the listener regardless of command registration success
+            if (!commandsRegistered) {
+                jda.addEventListener(this)
+                plugin.logger.info("Registered slash command listener")
+            }
+        } catch (e: Exception) {
+            plugin.logger.log(Level.WARNING, "Error registering Discord slash commands", e)
         }
+    }
 
-        // Register the commands with Discord (guild commands update instantly)
-        if (commands.isNotEmpty()) {
-            jda.updateCommands().addCommands(commands).queue(
+    /**
+     * Unregisters slash commands when the plugin is disabled
+     */
+    fun unregisterCommands() {
+        if (!commandsRegistered) return
+
+        try {
+            jda.updateCommands().queue(
                 {
-                    plugin.logger.info("Successfully registered ${commands.size} Discord commands")
+                    plugin.logger.info("Unregistered Discord slash commands")
+                    // Remove the listener
+                    jda.removeEventListener(this)
                 },
                 { error ->
-                    plugin.logger.warning("Failed to register Discord commands: ${error.message}")
+                    plugin.logger.warning("Failed to unregister Discord slash commands: ${error.message}")
                 },
             )
+        } catch (e: Exception) {
+            plugin.logger.log(Level.WARNING, "Error unregistering Discord slash commands", e)
         }
     }
 
     /**
      * Handles slash command interactions
-     *
-     * @param event The slash command event
      */
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
-        // Check if commands are enabled
-        if (!plugin.config.getBoolean(CONFIG_COMMANDS_ENABLED, true)) return
+        val commandName = event.name
 
-        when (event.name) {
-            "playerlist" -> handlePlayerListCommand(event)
-            else -> {
-                // Unknown command
-                if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
-                    plugin.logger.info("Received unknown command: ${event.name}")
-                }
-            }
+        if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
+            plugin.logger.info("Received slash command: $commandName from ${event.user.name}")
+        }
+
+        when (commandName) {
+            "ping" -> handlePingCommand(event)
+            "players" -> handlePlayersCommand(event)
+            else -> plugin.logger.warning("Unknown command: $commandName")
         }
     }
 
     /**
-     * Handles the playerlist command
-     *
-     * @param event The slash command event
+     * Handles the ping command
      */
-    private fun handlePlayerListCommand(event: SlashCommandInteractionEvent) {
-        // Check if playerlist command is enabled
-        if (!plugin.config.getBoolean(CONFIG_COMMANDS_PLAYERLIST, true)) {
-            event.reply("This command is disabled").setEphemeral(true).queue()
-            return
-        }
-
-        // Defer the reply to give us time to process
+    private fun handlePingCommand(event: SlashCommandInteractionEvent) {
+        // Defer reply to show "Bot is thinking..."
         event.deferReply().queue()
 
-        // Get the player list on the main server thread
+        // Respond with pong message
+        val message = "🏓 Pong! Discord Gateway: ${jda.gatewayPing}ms"
+
+        // Fixed: use hook.editOriginal() instead of hookEditOriginal()
+        event.hook.editOriginal(message).queue()
+
+        if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
+            plugin.logger.info("Responded to ping command from ${event.user.name}")
+        }
+    }
+
+    /**
+     * Handles the players command
+     */
+    private fun handlePlayersCommand(event: SlashCommandInteractionEvent) {
+        // Defer reply to show "Bot is thinking..."
+        event.deferReply().queue()
+
+        // Get online players
         Bukkit.getScheduler().runTask(
             plugin,
             Runnable {
@@ -99,28 +142,42 @@ class DiscordCommandHandler(
                 val playerCount = players.size
                 val maxPlayers = Bukkit.getMaxPlayers()
 
-                // Get player names
-                val playerNames = players.map { it.name }.sorted()
+                // Create player list embed
+                Bukkit.getScheduler().runTaskAsynchronously(
+                    plugin,
+                    Runnable {
+                        val playerNames = players.map { it.name }
+                        val embed = embedManager.createPlayerListEmbed(playerCount, maxPlayers, playerNames)
 
-                // Create and send the embed
-                if (embedManager.areEmbedsEnabled()) {
-                    val embed = embedManager.createPlayerListEmbed(playerCount, maxPlayers, playerNames)
-                    event.hook.sendMessageEmbeds(embed).queue()
-                } else {
-                    // Fallback to text message
-                    val message =
-                        if (playerCount > 0) {
-                            "Online Players ($playerCount/$maxPlayers): ${playerNames.joinToString(", ")}"
-                        } else {
-                            "There are no players online (0/$maxPlayers)"
+                        // Fixed: use hook.editOriginalEmbeds() instead of hookEditOriginalEmbeds()
+                        event.hook.editOriginalEmbeds(embed).queue()
+
+                        if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
+                            plugin.logger.info("Responded to players command from ${event.user.name}")
                         }
-                    event.hook.sendMessage(message).queue()
-                }
-
-                if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
-                    plugin.logger.info("Processed playerlist command")
-                }
+                    },
+                )
             },
         )
+    }
+
+    /**
+     * Sends an error message in response to a slash command
+     */
+    private fun sendErrorResponse(
+        event: SlashCommandInteractionEvent,
+        errorMessage: String,
+    ) {
+        try {
+            // If the interaction is already acknowledged
+            if (event.isAcknowledged) {
+                // Fixed: use hook.editOriginal() instead of hookEditOriginal()
+                event.hook.editOriginal("❌ Error: $errorMessage").queue()
+            } else {
+                event.reply("❌ Error: $errorMessage").setEphemeral(true).queue()
+            }
+        } catch (e: Exception) {
+            plugin.logger.log(Level.WARNING, "Failed to send error response for slash command", e)
+        }
     }
 }
