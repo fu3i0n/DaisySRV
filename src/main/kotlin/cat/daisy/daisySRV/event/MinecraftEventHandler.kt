@@ -3,7 +3,10 @@ package cat.daisy.daisySRV.event
 import cat.daisy.daisySRV.DaisySRV
 import cat.daisy.daisySRV.embed.EmbedManager
 import cat.daisy.daisySRV.webhook.WebhookManager
+import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
+import net.dv8tion.jda.api.exceptions.ErrorResponseException
+import net.dv8tion.jda.api.exceptions.RateLimitedException
 import org.bukkit.Bukkit
 import org.bukkit.advancement.Advancement
 import org.bukkit.event.EventHandler
@@ -40,6 +43,34 @@ class MinecraftEventHandler(
     }
 
     /**
+     * Checks if the JDA instance is active and connected
+     *
+     * @return true if JDA is connected and ready, false otherwise
+     */
+    private fun isJdaActive(): Boolean {
+        if ((plugin as? DaisySRV)?.isShuttingDown == true) {
+            plugin.logger.info("Plugin is shutting down, skipping Discord message")
+            return false
+        }
+
+        val status = discordChannel.jda.status
+        if (status != JDA.Status.CONNECTED) {
+            plugin.logger.warning("Discord JDA is not CONNECTED (status: $status)")
+            return false
+        }
+        return true
+    }
+
+    /**
+     * Sanitizes a message to prevent Discord mentions
+     */
+    private fun sanitizeDiscordMessage(message: String): String =
+        message
+            .replace("@everyone", "@\u200Beveryone")
+            .replace("@here", "@\u200Bhere")
+            .replace(Regex("@([\\w-]+)"), "@\u200B$1")
+
+    /**
      * Handles player chat events and forwards them to Discord
      *
      * @param event The AsyncPlayerChatEvent containing the player and message
@@ -47,7 +78,7 @@ class MinecraftEventHandler(
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     fun onPlayerChat(event: AsyncPlayerChatEvent) {
         val player = event.player
-        val message = event.message
+        val message = sanitizeDiscordMessage(event.message)
 
         // If webhook is enabled and initialized, use it to send the message with player avatar
         if (webhookManager != null && webhookManager.isWebhookEnabled()) {
@@ -199,7 +230,9 @@ class MinecraftEventHandler(
         username: String,
         message: String,
     ) {
-        val sanitizedMessage = message.replace(Regex("@\\S+"), "@\u200B")
+        if (!isJdaActive()) return
+
+        val sanitizedMessage = sanitizeDiscordMessage(message)
 
         val format = plugin.config.getString(CONFIG_FORMAT_MC_TO_DISCORD) ?: DEFAULT_MC_TO_DISCORD_FORMAT
         val formattedMessage =
@@ -219,7 +252,14 @@ class MinecraftEventHandler(
                             }
                         },
                         { error ->
-                            plugin.logger.log(Level.WARNING, "Failed to send message to Discord: ${error.message}")
+                            when (error) {
+                                is RateLimitedException ->
+                                    plugin.logger.warning("Rate limited by Discord: ${error.message}")
+                                is ErrorResponseException ->
+                                    plugin.logger.warning("Discord API error (${error.errorCode}): ${error.meaning}")
+                                else ->
+                                    plugin.logger.log(Level.WARNING, "Failed to send message to Discord: ${error.message}")
+                            }
                         },
                     )
                 } catch (e: Exception) {
@@ -235,6 +275,8 @@ class MinecraftEventHandler(
      * @param message The message content
      */
     private fun sendSystemMessageToDiscord(message: String) {
+        if (!isJdaActive()) return
+
         // Run async to avoid blocking the main thread
         Bukkit.getScheduler().runTaskAsynchronously(
             plugin,
@@ -247,7 +289,14 @@ class MinecraftEventHandler(
                             }
                         },
                         { error ->
-                            plugin.logger.log(Level.WARNING, "Failed to send system message to Discord: ${error.message}")
+                            when (error) {
+                                is RateLimitedException ->
+                                    plugin.logger.warning("Rate limited by Discord: ${error.message}")
+                                is ErrorResponseException ->
+                                    plugin.logger.warning("Discord API error (${error.errorCode}): ${error.meaning}")
+                                else ->
+                                    plugin.logger.log(Level.WARNING, "Failed to send system message to Discord: ${error.message}")
+                            }
                         },
                     )
                 } catch (e: Exception) {
@@ -263,6 +312,8 @@ class MinecraftEventHandler(
      * @param embed The MessageEmbed to send
      */
     private fun sendEmbedToDiscord(embed: net.dv8tion.jda.api.entities.MessageEmbed) {
+        if (!isJdaActive()) return
+
         // Run async to avoid blocking the main thread
         Bukkit.getScheduler().runTaskAsynchronously(
             plugin,
@@ -271,11 +322,18 @@ class MinecraftEventHandler(
                     discordChannel.sendMessageEmbeds(embed).queue(
                         {
                             if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
-                                plugin.logger.info("Sent embed to Discord: ${embed.getTitle()}")
+                                plugin.logger.info("Sent embed to Discord: ${embed.title}")
                             }
                         },
                         { error ->
-                            plugin.logger.log(Level.WARNING, "Failed to send embed to Discord: ${error.message}")
+                            when (error) {
+                                is RateLimitedException ->
+                                    plugin.logger.warning("Rate limited by Discord: ${error.message}")
+                                is ErrorResponseException ->
+                                    plugin.logger.warning("Discord API error (${error.errorCode}): ${error.meaning}")
+                                else ->
+                                    plugin.logger.log(Level.WARNING, "Failed to send embed to Discord: ${error.message}")
+                            }
                         },
                     )
                 } catch (e: Exception) {
@@ -292,11 +350,21 @@ class MinecraftEventHandler(
      * @param embed The MessageEmbed to send
      */
     private fun sendEmbedToDiscordSync(embed: net.dv8tion.jda.api.entities.MessageEmbed) {
+        // No JDA check here as we're about to shut down anyway
         try {
+            if (discordChannel.jda.status != JDA.Status.CONNECTED) {
+                plugin.logger.warning("Discord JDA is not CONNECTED, cannot send shutdown embed")
+                return
+            }
+
             discordChannel.sendMessageEmbeds(embed).complete()
             if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
                 plugin.logger.info("Sent embed to Discord synchronously: ${embed.getTitle()}")
             }
+        } catch (e: RateLimitedException) {
+            plugin.logger.warning("Rate limited while sending shutdown message: ${e.message}")
+        } catch (e: ErrorResponseException) {
+            plugin.logger.warning("Discord API error while sending shutdown message (${e.errorCode}): ${e.meaning}")
         } catch (e: Exception) {
             plugin.logger.log(Level.WARNING, "Failed to send embed to Discord synchronously", e)
         }
@@ -309,11 +377,21 @@ class MinecraftEventHandler(
      * @param message The message content
      */
     private fun sendSystemMessageToDiscordSync(message: String) {
+        // No JDA check here as we're about to shut down anyway
         try {
+            if (discordChannel.jda.status != JDA.Status.CONNECTED) {
+                plugin.logger.warning("Discord JDA is not CONNECTED, cannot send shutdown message")
+                return
+            }
+
             discordChannel.sendMessage(message).complete()
             if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
                 plugin.logger.info("Sent system message to Discord synchronously: $message")
             }
+        } catch (e: RateLimitedException) {
+            plugin.logger.warning("Rate limited while sending shutdown message: ${e.message}")
+        } catch (e: ErrorResponseException) {
+            plugin.logger.warning("Discord API error while sending shutdown message (${e.errorCode}): ${e.meaning}")
         } catch (e: Exception) {
             plugin.logger.log(Level.WARNING, "Failed to send system message to Discord synchronously", e)
         }
@@ -321,21 +399,17 @@ class MinecraftEventHandler(
 
     /**
      * Updates the player count in the bot status
-     * Note: This will call the updateBotStatus method in the main plugin class
-     * which will be implemented later
      */
     private fun updatePlayerCount() {
         val playerCount = Bukkit.getOnlinePlayers().size
         val maxPlayers = Bukkit.getMaxPlayers()
 
-        // For now, just log the player count
-        // The updateBotStatus method will be implemented in the main plugin class
         if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
             plugin.logger.info("Player count updated: $playerCount/$maxPlayers")
         }
 
-        // This will be uncommented when the method is implemented
-        // plugin.updateBotStatus(playerCount, maxPlayers)
+        // Update the bot status
+        (plugin as? DaisySRV)?.updateBotStatus(playerCount, maxPlayers)
     }
 
     /**
