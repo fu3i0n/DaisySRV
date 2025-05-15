@@ -1,23 +1,33 @@
 name: DaisySRV
-version: '1.1'
+version: '1.2'
 main: cat.daisy.daisySRV.DaisySRV
 api-version: '1.21'
-description: 'A simple Discord-Minecraft chat bridge'
+description: 'Discord-Minecraft bridge with enhanced stability, webhooks, and embeds'
 authors: [ Daisy ]
 website: https://daisy.cat
 
 # Libraries - These will be downloaded by the server
 libraries:
   # Kotlin dependencies
-  - org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.1.20
+  - org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.1.21
+  # JDA dependencies - explicitly defined to ensure compatibility
+  - net.dv8tion:JDA:5.0.0-beta.13
+  - com.squareup.okhttp3:okhttp:4.12.0
+  - org.slf4j:slf4j-api:2.0.7
 
 commands:
   ddiscord:
     description: DaisySRV main command
-    usage: /ddiscord [reload]
+    usage: /ddiscord [reload|status]
     permission: daisysrv.admin
 
 permissions:
   daisysrv.admin:
-    description: Allows access to DaisySRV admin commands
+    description: Allows access to all DaisySRV admin commands
+    default: op
+  daisysrv.reload:
+    description: Allows reloading the plugin configuration
+    default: op
+  daisysrv.status:
+    description: Allows checking the Discord connection status
     default: op
