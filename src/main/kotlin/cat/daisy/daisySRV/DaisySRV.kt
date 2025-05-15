@@ -8,6 +8,7 @@ import cat.daisy.daisySRV.webhook.WebhookManager
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
+import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.requests.GatewayIntent
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 import org.bukkit.Bukkit
@@ -16,6 +17,8 @@ import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
 import org.bukkit.event.Listener
 import org.bukkit.plugin.java.JavaPlugin
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.logging.Level
 
 /**
@@ -43,6 +46,9 @@ class DaisySRV :
 
         // Default values
         private const val DEFAULT_DISCORD_TO_MC_FORMAT = "&b[Discord] &f{username}: &7{message}"
+
+        // Connection check intervals (in ticks, 20 ticks = 1 second)
+        private const val CONNECTION_CHECK_INTERVAL = 6000 // 5 minutes
     }
 
     private var jda: JDA? = null
@@ -51,158 +57,226 @@ class DaisySRV :
     private var minecraftEventHandler: MinecraftEventHandler? = null
     private var discordCommandHandler: DiscordCommandHandler? = null
     private var botStatusManager: BotStatusManager? = null
-    private var webhookManager: WebhookManager? = null
+
+    // Changed from private to internal for access from WebhookManager
+    internal var webhookManager: WebhookManager? = null
+
+    // Connection and shutdown management
+    var isShuttingDown = false
+
+    // Changed from private to internal for access from WebhookManager
+    internal val messageQueue = MessageQueue()
+    private var connectionCheckTask: Int = -1
 
     override fun onEnable() {
         // Save default config if it doesn't exist
         saveDefaultConfig()
 
-        // Initialize Discord bot
-        initializeDiscordBot()
+        // Initialize plugin
+        logger.info("Initializing DaisySRV ${description.version}")
 
-        // Register command executor
-        getCommand("ddiscord")?.setExecutor(this)
+        // Setup Discord connection
+        setupDiscordConnection()
 
-        logger.info("DaisySRV has been enabled!")
+        // Schedule connection check task
+        scheduleConnectionCheck()
+
+        // Register Bukkit events
+        server.pluginManager.registerEvents(this, this)
+
+        logger.info("DaisySRV enabled successfully!")
     }
 
     override fun onDisable() {
-        // Send server stopping message if event handler is initialized
+        isShuttingDown = true
+
+        // Send server stopping message if configured
         minecraftEventHandler?.sendServerStoppingMessage()
 
-        // Shutdown Discord bot
-        try {
-            jda?.shutdownNow() // Ensures immediate termination of JDA resources
-            logger.info("JDA connection closed successfully.")
-        } catch (e: Exception) {
-            logger.log(Level.WARNING, "Error while shutting down JDA", e)
-        }
-        try {
-            // Clear webhook manager
-            webhookManager?.isWebhookEnabled() == false
-            webhookManager = null
-            logger.info("Webhook connection closed successfully.")
-        } catch (e: Exception) {
-            logger.log(Level.WARNING, "Error while shutting down Webhooks", e)
+        // Unregister slash commands
+        discordCommandHandler?.unregisterCommands()
+
+        // Shutdown JDA gracefully
+        if (jda != null) {
+            try {
+                logger.info("Shutting down Discord connection...")
+                jda?.shutdown()
+            } catch (e: Exception) {
+                logger.log(Level.WARNING, "Error shutting down JDA", e)
+            }
         }
 
-        logger.info("DaisySRV has been disabled!")
+        // Cancel scheduled tasks
+        if (connectionCheckTask != -1) {
+            Bukkit.getScheduler().cancelTask(connectionCheckTask)
+        }
+
+        logger.info("DaisySRV disabled successfully!")
     }
 
     /**
-     * Initializes the Discord bot connection using the token from config
-     * Sets up the JDA instance and connects to the specified Discord channel
+     * Sets up the Discord connection using JDA
      */
-    private fun initializeDiscordBot() {
+    private fun setupDiscordConnection() {
         val token = config.getString(CONFIG_DISCORD_TOKEN)
         if (token.isNullOrBlank() || token == "YOUR_BOT_TOKEN_HERE") {
-            logger.warning("Discord bot token is not configured! Please set it in the config.yml")
+            logger.warning("Discord token not configured! Please set it in config.yml")
+            return
+        }
+
+        val channelId = config.getString(CONFIG_DISCORD_CHANNEL_ID)
+        if (channelId.isNullOrBlank() || channelId == "YOUR_CHANNEL_ID_HERE") {
+            logger.warning("Discord channel ID not configured! Please set it in config.yml")
             return
         }
 
         try {
-            // Build JDA instance with optimized settings
+            // Build JDA instance with necessary intents
             jda =
                 JDABuilder
                     .createDefault(token)
-                    .enableIntents(GatewayIntent.MESSAGE_CONTENT, GatewayIntent.GUILD_MEMBERS)
-                    .enableCache(CacheFlag.MEMBER_OVERRIDES)
-                    .disableCache(CacheFlag.VOICE_STATE, CacheFlag.EMOJI, CacheFlag.STICKER, CacheFlag.SCHEDULED_EVENTS)
-                    .setAutoReconnect(true)
-                    .build()
+                    .enableIntents(
+                        GatewayIntent.GUILD_MESSAGES,
+                        GatewayIntent.MESSAGE_CONTENT,
+                    ).disableCache(
+                        CacheFlag.VOICE_STATE,
+                        CacheFlag.EMOJI,
+                        CacheFlag.STICKER,
+                        CacheFlag.SCHEDULED_EVENTS,
+                    ).build()
                     .awaitReady()
 
             // Get the Discord channel
-            val channelId = config.getString(CONFIG_DISCORD_CHANNEL_ID)
-            if (channelId.isNullOrBlank() || channelId == "YOUR_CHANNEL_ID_HERE") {
-                logger.warning("Discord channel ID is not configured! Please set it in the config.yml")
-                return
-            }
-
-            discordChannel = jda?.getTextChannelById(channelId)
-            if (discordChannel == null) {
+            val channel = jda?.getTextChannelById(channelId)
+            if (channel == null) {
                 logger.warning("Could not find Discord channel with ID: $channelId")
                 return
             }
+            discordChannel = channel
+            logger.info("Connected to Discord channel: ${channel.name}")
 
-            // Initialize managers and handlers
-            initializeManagers()
-
-            logger.info("Successfully connected to Discord!")
+            // Initialize components
+            initializeComponents()
         } catch (e: Exception) {
-            logger.log(Level.SEVERE, "Failed to initialize Discord bot", e)
+            logger.log(Level.SEVERE, "Failed to connect to Discord", e)
         }
     }
 
     /**
-     * Initializes all managers and handlers
+     * Restarts the Discord session
+     * Added to fix the unresolved reference error
      */
-    private fun initializeManagers() {
-        if (jda == null || discordChannel == null) return
+    private fun restartSession() {
+        logger.info("Restarting Discord session...")
+        jda?.shutdown()
+        setupDiscordConnection()
+    }
 
-        // Create embed manager
+    /**
+     * Initialize all components after Discord connection is established
+     */
+    private fun initializeComponents() {
+        val channel = discordChannel ?: return
+
+        // Initialize embed manager
         embedManager = EmbedManager(config)
 
-        // Create webhook manager
-        webhookManager = WebhookManager(this, discordChannel!!, config)
+        // Initialize webhook manager if enabled
+        webhookManager = WebhookManager(this, channel, config)
 
-        // Create bot status manager
-        botStatusManager = BotStatusManager(this, jda!!, config)
+        // Initialize bot status manager
+        jda?.let { botStatusManager = BotStatusManager(this, it, config) }
 
-        // Create and register Minecraft event handler
-        minecraftEventHandler = MinecraftEventHandler(this, discordChannel!!, embedManager!!, webhookManager)
+        // Initialize Minecraft event handler
+        minecraftEventHandler = MinecraftEventHandler(this, channel, embedManager!!, webhookManager)
         server.pluginManager.registerEvents(minecraftEventHandler!!, this)
 
-        // Create and register Discord command handler
-        discordCommandHandler = DiscordCommandHandler(this, jda!!, embedManager!!)
-        jda?.addEventListener(discordCommandHandler)
-
-        // Register Discord message listener
-        jda?.addEventListener(DiscordListener(this))
-
-        // Register commands with Discord
+        // Initialize Discord command handler
+        jda?.let { discordCommandHandler = DiscordCommandHandler(this, it, embedManager!!) }
         discordCommandHandler?.registerCommands()
 
-        // Update bot status with initial player count
+        // Set initial bot status
         updateBotStatus(Bukkit.getOnlinePlayers().size, Bukkit.getMaxPlayers())
+
+        // Setup Discord message listener
+        setupDiscordMessageListener()
     }
 
     /**
-     * Sends a message from Discord to Minecraft
-     *
-     * @param username The Discord username
-     * @param message The message content
+     * Setup the Discord message listener
      */
-    fun sendMessageToMinecraft(
-        username: String,
-        message: String,
-    ) {
-        val format = config.getString(CONFIG_FORMAT_DISCORD_TO_MC) ?: DEFAULT_DISCORD_TO_MC_FORMAT
-        val formattedMessage =
-            ChatColor.translateAlternateColorCodes(
-                '&',
-                format
-                    .replace("{username}", username)
-                    .replace("{message}", message),
-            )
+    private fun setupDiscordMessageListener() {
+        // Create a listener for Discord messages
+        class DiscordMessageListener : ListenerAdapter() {
+            override fun onMessageReceived(event: net.dv8tion.jda.api.events.message.MessageReceivedEvent) {
+                // Ignore own messages to prevent loops
+                if (event.author.isBot) return
 
-        // Run on the main thread since Bukkit API is not thread-safe
-        Bukkit.getScheduler().runTask(
-            this,
-            Runnable {
+                // Check if message is in the configured channel
+                if (event.channel.id != discordChannel?.id) return
+
+                // Get message content
+                val content = event.message.contentDisplay
+
+                // Forward message to Minecraft
+                val format = config.getString(CONFIG_FORMAT_DISCORD_TO_MC) ?: DEFAULT_DISCORD_TO_MC_FORMAT
+                val formattedMessage =
+                    ChatColor.translateAlternateColorCodes(
+                        '&',
+                        format
+                            .replace("{username}", event.member?.effectiveName ?: event.author.name)
+                            .replace("{message}", content),
+                    )
+
+                // Broadcast to all players
                 Bukkit.broadcastMessage(formattedMessage)
+
                 if (config.getBoolean(CONFIG_DEBUG, false)) {
-                    logger.info("Sent message to Minecraft: $formattedMessage")
+                    logger.info("Discord -> MC: ${event.author.name}: $content")
                 }
-            },
-        )
+            }
+
+            // Removed 'override' since these don't override any parent methods
+            fun onDisconnect(event: net.dv8tion.jda.api.events.session.SessionDisconnectEvent) {
+                logger.warning("Disconnected from Discord: ${event.closeCode}")
+            }
+
+            // Removed 'override' since these don't override any parent methods
+            fun onReconnect(event: net.dv8tion.jda.api.events.session.SessionRecreateEvent) {
+                logger.info("Reconnected to Discord")
+            }
+        }
+
+        // Register the listener
+        jda?.addEventListener(DiscordMessageListener())
     }
 
     /**
-     * Updates the bot's status with the current player count
+     * Schedules a periodic connection check to ensure Discord connection is active
+     */
+    private fun scheduleConnectionCheck() {
+        connectionCheckTask =
+            Bukkit.getScheduler().scheduleSyncRepeatingTask(
+                this,
+                {
+                    val jdaInstance = jda
+                    if (jdaInstance == null || jdaInstance.status != JDA.Status.CONNECTED) {
+                        logger.warning("Discord connection is not active (status: ${jdaInstance?.status}). Attempting to reconnect...")
+                        restartSession()
+                    } else if (config.getBoolean(CONFIG_DEBUG, false)) {
+                        logger.info("Discord connection check: OK (status: ${jdaInstance.status})")
+                    }
+                },
+                CONNECTION_CHECK_INTERVAL.toLong(),
+                CONNECTION_CHECK_INTERVAL.toLong(),
+            )
+    }
+
+    /**
+     * Updates the bot status with player count information
      *
-     * @param playerCount The current player count
-     * @param maxPlayers The maximum player count
+     * @param playerCount The current number of online players
+     * @param maxPlayers The maximum player capacity
      */
     fun updateBotStatus(
         playerCount: Int,
@@ -213,12 +287,6 @@ class DaisySRV :
 
     /**
      * Handles plugin commands
-     *
-     * @param sender The command sender
-     * @param command The command being executed
-     * @param label The command label used
-     * @param args The command arguments
-     * @return true if the command was handled, false otherwise
      */
     override fun onCommand(
         sender: CommandSender,
@@ -227,74 +295,116 @@ class DaisySRV :
         args: Array<out String>,
     ): Boolean {
         if (command.name.equals("ddiscord", ignoreCase = true)) {
-            if (!sender.hasPermission("DaisySRV.admin")) {
-                sender.sendMessage("${ChatColor.RED}You don't have permission to use this command.")
+            if (args.isEmpty()) {
+                sender.sendMessage("${ChatColor.AQUA}[DaisySRV] ${ChatColor.GRAY}Version ${description.version}")
+                sender.sendMessage("${ChatColor.AQUA}[DaisySRV] ${ChatColor.GRAY}/ddiscord reload - Reload configuration")
+                sender.sendMessage("${ChatColor.AQUA}[DaisySRV] ${ChatColor.GRAY}/ddiscord status - Check Discord connection status")
                 return true
             }
 
-            if (args.isNotEmpty() && args[0].equals("reload", ignoreCase = true)) {
-                sender.sendMessage("${ChatColor.YELLOW}Reloading DaisySRV configuration...")
+            when (args[0].lowercase()) {
+                "reload" -> {
+                    if (!sender.hasPermission("daisysrv.reload")) {
+                        sender.sendMessage("${ChatColor.RED}You don't have permission to use this command")
+                        return true
+                    }
 
-                // Shutdown current JDA instance
-                jda?.shutdown()
+                    // Reload config
+                    reloadConfig()
+                    sender.sendMessage("${ChatColor.AQUA}[DaisySRV] ${ChatColor.GREEN}Configuration reloaded!")
 
-                // Clear event handlers
-                minecraftEventHandler = null
-                discordCommandHandler = null
-                botStatusManager = null
-                embedManager = null
-                webhookManager = null
+                    // Restart components
+                    isShuttingDown = true
+                    jda?.shutdown()
+                    isShuttingDown = false
+                    setupDiscordConnection()
 
-                // Reload config
-                reloadConfig()
+                    return true
+                }
+                "status" -> {
+                    if (!sender.hasPermission("daisysrv.status")) {
+                        sender.sendMessage("${ChatColor.RED}You don't have permission to use this command")
+                        return true
+                    }
 
-                // Reinitialize Discord bot
-                initializeDiscordBot()
-
-                sender.sendMessage("${ChatColor.GREEN}DaisySRV configuration reloaded!")
-                return true
+                    // Check connection status
+                    val jdaInstance = jda
+                    if (jdaInstance == null) {
+                        sender.sendMessage("${ChatColor.AQUA}[DaisySRV] ${ChatColor.RED}Discord connection: Not connected")
+                    } else {
+                        val status = jdaInstance.status
+                        val statusColor =
+                            when (status) {
+                                JDA.Status.CONNECTED -> ChatColor.GREEN
+                                JDA.Status.ATTEMPTING_TO_RECONNECT -> ChatColor.YELLOW
+                                else -> ChatColor.RED
+                            }
+                        sender.sendMessage("${ChatColor.AQUA}[DaisySRV] ${ChatColor.GRAY}Discord connection: $statusColor$status")
+                        sender.sendMessage(
+                            "${ChatColor.AQUA}[DaisySRV] ${ChatColor.GRAY}Channel: ${discordChannel?.name ?: "Not connected"}",
+                        )
+                        sender.sendMessage(
+                            "${ChatColor.AQUA}[DaisySRV] ${ChatColor.GRAY}Webhook enabled: ${webhookManager?.isWebhookEnabled() ?: false}",
+                        )
+                    }
+                    return true
+                }
+                else -> {
+                    sender.sendMessage("${ChatColor.AQUA}[DaisySRV] ${ChatColor.RED}Unknown command. Use /ddiscord for help")
+                    return true
+                }
             }
-
-            // Show help message
-            sender.sendMessage("${ChatColor.GOLD}DaisySRV Commands:")
-            sender.sendMessage("${ChatColor.YELLOW}/ddiscord reload ${ChatColor.GRAY}- Reload the configuration")
-            return true
         }
         return false
     }
 
     /**
-     * Inner class for handling Discord messages
-     * Listens for messages in the configured channel and forwards them to Minecraft
+     * Message queue for handling async messages to Discord
      */
-    private inner class DiscordListener(
-        private val plugin: DaisySRV,
-    ) : net.dv8tion.jda.api.hooks.ListenerAdapter() {
-        /**
-         * Handles incoming Discord messages
-         *
-         * @param event The message received event
-         */
-        override fun onMessageReceived(event: net.dv8tion.jda.api.events.message.MessageReceivedEvent) {
-            // Ignore messages from bots (including our own)
-            if (event.author.isBot) return
+    inner class MessageQueue {
+        private val pendingMessages = ConcurrentLinkedQueue<() -> Unit>()
+        private val isProcessing = AtomicBoolean(false)
 
-            // Check if the message is from the configured channel
-            val channelId = plugin.config.getString(CONFIG_DISCORD_CHANNEL_ID)
-            if (event.channel.id != channelId) return
+        fun enqueue(message: () -> Unit) {
+            pendingMessages.add(message)
+            processQueue()
+        }
 
-            // Get the message content
-            val message = event.message.contentDisplay
+        private fun processQueue() {
+            if (isProcessing.compareAndSet(false, true)) {
+                // Fix for runTaskAsynchronously ambiguity - explicitly use Runnable version
+                Bukkit.getScheduler().runTaskAsynchronously(
+                    this@DaisySRV,
+                    Runnable {
+                        try {
+                            while (pendingMessages.isNotEmpty()) {
+                                if (isShuttingDown) {
+                                    logger.info("Plugin shutting down, clearing message queue with ${pendingMessages.size} messages")
+                                    pendingMessages.clear()
+                                    break
+                                }
 
-            // Skip empty messages
-            if (message.isBlank()) return
+                                try {
+                                    pendingMessages.poll()?.invoke()
+                                } catch (e: Exception) {
+                                    logger.log(Level.WARNING, "Error processing message in queue", e)
+                                }
 
-            // Get the author's name (use nickname if available)
-            val member = event.member
-            val username = member?.effectiveName ?: event.author.name
-
-            // Send the message to Minecraft
-            plugin.sendMessageToMinecraft(username, message)
+                                // Small delay to respect rate limits
+                                Thread.sleep(100)
+                            }
+                        } catch (e: Exception) {
+                            logger.log(Level.WARNING, "Error in message queue processor", e)
+                        } finally {
+                            isProcessing.set(false)
+                            // Process any messages that were added while we were processing
+                            if (pendingMessages.isNotEmpty()) {
+                                processQueue()
+                            }
+                        }
+                    },
+                )
+            }
         }
     }
 }

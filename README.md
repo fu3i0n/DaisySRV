@@ -9,7 +9,7 @@ An enhanced Minecraft-Discord chat bridge plugin for Paper servers with rich emb
 - Rich embeds for player join/leave events
 - Rich embeds for player achievements
 - Server status notifications (online/offline)
-- Discord slash commands (e.g., `/playerlist`)
+- Discord slash commands (e.g., `/players`)
 - Bot status showing player count
 - Webhook support for player messages with avatars and names
 - Customizable message formats and colors
