@@ -324,6 +324,11 @@ class MinecraftConsoleHandler(
             loggerName: String,
             message: String,
         ): Boolean {
+            // Always allow chat messages
+            if (message.contains("[Not Secure] [Server]") || (message.contains("<") && message.contains(">"))) {
+                return false
+            }
+
             // Skip messages from our own plugin that would cause recursion
             if (loggerName == "DaisySRV" &&
                 (
@@ -335,25 +340,14 @@ class MinecraftConsoleHandler(
                 return true
             }
 
-            // Skip verbose messages
-            if (DISCONNECT_PATTERN.containsMatchIn(message) ||
-                EXCEPTION_PATTERN.containsMatchIn(message) ||
-                STACK_TRACE_PATTERN.matches(message) // Stack traces usually start with "at "
+            // Skip stack traces and exceptions
+            if (STACK_TRACE_PATTERN.matches(message) ||
+                message.startsWith("\tat ")
             ) {
                 return true
             }
 
-            // Skip common routine logs
-            if (INFO_PATTERN.containsMatchIn(message) ||
-                ROUTINE_LOGS_PATTERN.containsMatchIn(message) ||
-                SPARK_PATTERN.containsMatchIn(message) ||
-                SERVER_ROUTINE_PATTERN.containsMatchIn(message) ||
-                COMMON_NOISE_PATTERN.containsMatchIn(message) ||
-                IP_ADDRESS_PATTERN.containsMatchIn(message)
-            ) {
-                return true
-            }
-
+            // Keep most other messages, but reduce duplicates like multiple connection messages
             return false
         }
 
@@ -364,11 +358,11 @@ class MinecraftConsoleHandler(
             // Remove color/formatting codes like [32m, [0m, [35m, etc.
             var cleaned = message.replace(Regex("\\u001B\\[[0-9;]*m"), "")
 
-            // Remove redundant bracketed tags like [INFO], [MinecraftServer]
-            cleaned = cleaned.replace(Regex("\\[(?:INFO|WARN|ERROR|DEBUG|MinecraftServer|Server)\\]"), "")
+            // Remove redundant bracketed tags that make it hard to read
+            cleaned = cleaned.replace(Regex("\\[(?:INFO|WARN|ERROR|DEBUG)\\]"), "")
 
             // Clean up any resulting double spaces or empty brackets
-            cleaned = cleaned.replace(Regex("\\s+"), " ")
+            cleaned = cleaned.replace(Regex("\\s{2,}"), " ")
             cleaned = cleaned.replace(Regex("\\[\\s*\\]"), "")
             cleaned = cleaned.replace(Regex(":\\s+:"), ":")
 
