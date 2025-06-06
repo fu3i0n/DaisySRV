@@ -113,23 +113,37 @@ class DaisySRV :
         if (jda != null) {
             try {
                 logger.info("Shutting down Discord connection...")
-                // Use shutdownNow instead of shutdown, and wait for it to complete asynchronously
-                jda?.shutdownNow()
-                // Wait asynchronously for up to 5 seconds for shutdown to complete
-                val shutdownFuture = CompletableFuture.runAsync {
-                    while (!jda?.status?.isShutdown == true) {
-                        Thread.sleep(100) // Check every 100ms
-                    }
-                }
+
+                // First nullify all JDA listeners to prevent callbacks during shutdown
                 try {
-                    shutdownFuture.get(5, TimeUnit.SECONDS)
-                } catch (e: TimeoutException) {
-                    logger.warning("JDA shutdown timed out after 5 seconds")
+                    val jdaInstance = jda
+                    jdaInstance?.eventManager?.registeredListeners?.clear()
+                } catch (ignored: Exception) {
+                    // Ignore any errors during listener removal
                 }
+
+                // Force immediate shutdown - no waiting
+                try {
+                    jda?.shutdownNow()
+                } catch (ignored: Exception) {
+                    // Ignore any errors during shutdown
+                }
+
+                // Force manual cleanup with some delay
+                Thread.sleep(500)
+
+                // Force the JDA reference to null to help GC
+                jda = null
+
+                // Force garbage collection to clean up resources (System.gc is normally avoided, but this is a special case)
+                System.gc()
+
+                // Add additional delay to allow any pending threads to exit
+                Thread.sleep(500)
             } catch (e: Exception) {
                 logger.log(Level.WARNING, "Error shutting down JDA", e)
             } finally {
-                jda = null // Explicitly set to null to help garbage collection
+                jda = null // Double ensure JDA is null
             }
         }
 
