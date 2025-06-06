@@ -113,11 +113,19 @@ class DaisySRV :
         if (jda != null) {
             try {
                 logger.info("Shutting down Discord connection...")
-                // Use shutdownNow instead of shutdown, and wait for it to complete
+                // Use shutdownNow instead of shutdown, and wait for it to complete asynchronously
                 jda?.shutdownNow()
-                // Wait up to 5 seconds for shutdown to complete
-                // This helps prevent "zip file closed" errors during server shutdown
-                Thread.sleep(2000) // Give JDA time to clean up resources
+                // Wait asynchronously for up to 5 seconds for shutdown to complete
+                val shutdownFuture = CompletableFuture.runAsync {
+                    while (!jda?.status?.isShutdown == true) {
+                        Thread.sleep(100) // Check every 100ms
+                    }
+                }
+                try {
+                    shutdownFuture.get(5, TimeUnit.SECONDS)
+                } catch (e: TimeoutException) {
+                    logger.warning("JDA shutdown timed out after 5 seconds")
+                }
             } catch (e: Exception) {
                 logger.log(Level.WARNING, "Error shutting down JDA", e)
             } finally {
