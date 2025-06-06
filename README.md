@@ -10,6 +10,7 @@ An enhanced Minecraft-Discord chat bridge plugin for Paper servers with rich emb
 - Rich embeds for player achievements
 - Server status notifications (online/offline)
 - Discord slash commands (e.g., `/players`)
+- Console slash commands (e.g., `/console [message]`)
 - Bot status showing player count
 - Webhook support for player messages with avatars and names
 - Customizable message formats and colors
@@ -79,95 +80,142 @@ If you want player messages to be sent with their Minecraft username and avatar:
 The `config.yml` file contains the following options:
 
 ```yaml
+# ======================================
+# DaisySRV Configuration
+# ======================================
+# Version 1.3
+
+# ======================================
 # Discord Bot Configuration
+# ======================================
 discord:
-  # Your Discord bot token (KEEP THIS SECRET!)
-  token: "YOUR_BOT_TOKEN_HERE"
+   # Your Discord bot token (KEEP THIS SECRET!)
+   # Get this from https://discord.com/developers/applications
+   token: "YOUR_BOT_TOKEN_HERE"
 
-  # The Discord channel ID to send/receive messages
-  channel-id: "YOUR_CHANNEL_ID_HERE"
+   # The Discord channel ID to send/receive messages
+   # Right-click on a channel in Discord and select "Copy ID"
+   channel-id: "YOUR_CHANNEL_ID_HERE"
 
+
+# ======================================
+# Console Log Configuration
+# ======================================
+console-log:
+   # Whether to forward console messages to Discord
+   enabled: false
+
+   # The Discord role ID that is allowed to use the /console command
+   # Right-click on a role in Discord server settings and select "Copy ID"
+   whitelist-role: "YOUR_ADMIN_ROLE_ID_HERE"
+
+   # The Discord channel ID for console command logs
+   # You may want to use a separate, private channel for this
+   log-channel-id: "YOUR_CONSOLE_LOG_CHANNEL_ID_HERE"
+
+
+# ======================================
 # Message Format Configuration
+# ======================================
 format:
-  # Format for Discord messages sent to Minecraft
-  # Available placeholders: {username}, {message}
-  discord-to-minecraft: "&b[Discord] &f{username}: &7{message}"
+   # Format for Discord messages sent to Minecraft
+   # Available placeholders: {username}, {message}
+   # Color codes with & are supported
+   discord-to-minecraft: "&b[Discord] &f{username}: &7{message}"
 
-  # Format for Minecraft messages sent to Discord
-  # Available placeholders: {username}, {message}
-  minecraft-to-discord: "**{username}**: {message}"
+   # Format for Minecraft messages sent to Discord
+   # Available placeholders: {username}, {message}
+   # Markdown formatting is supported
+   minecraft-to-discord: "**{username}**: {message}"
 
+
+# ======================================
 # Embed Configuration
+# ======================================
 embeds:
-  # Whether to use embeds for events
-  enabled: true
+   # Whether to use embeds for events (looks nicer but can be disabled for compatibility)
+   enabled: true
 
-  # Colors for different types of embeds (hex color codes)
-  colors:
-    join: "#55FF55"       # Green
-    leave: "#FF5555"      # Red
-    achievement: "#FFAA00" # Gold
-    server: "#55FFFF"     # Aqua
-    playerlist: "#5555FF" # Blue
+   # Colors for different types of embeds (hex color codes)
+   colors:
+      join: "#55FF55"       # Green
+      leave: "#FF5555"      # Red
+      achievement: "#FFAA00" # Gold
+      server: "#55FFFF"     # Aqua
+      playerlist: "#5555FF" # Blue
 
+
+# ======================================
 # Event Configuration
+# ======================================
 events:
-  # Whether to send messages when players join
-  player-join: true
+   # Whether to send messages when players join
+   player-join: true
 
-  # Whether to send messages when players leave
-  player-quit: true
+   # Whether to send messages when players leave
+   player-quit: true
 
-  # Whether to send messages when players earn achievements
-  player-advancement: true
+   # Whether to send messages when players earn achievements
+   player-advancement: true
 
-  # Whether to send a message when the server starts
-  server-start: true
+   # Whether to send a message when the server starts
+   server-start: true
 
-  # Whether to send a message when the server stops
-  server-stop: true
+   # Whether to send a message when the server stops
+   server-stop: true
 
+
+# ======================================
 # Command Configuration
+# ======================================
 commands:
-  # Whether to enable Discord slash commands
-  enabled: true
+   # Whether to enable Discord slash commands
+   enabled: true
 
-  # Whether to enable the playerlist command
-  playerlist: true
+   # Whether to enable the playerlist command
+   playerlist: true
 
+
+# ======================================
 # Bot Status Configuration
+# ======================================
 status:
-  # Whether to show player count in bot status
-  enabled: true
+   # Whether to show player count in bot status
+   enabled: true
 
-  # Type of status (PLAYING, WATCHING, LISTENING, COMPETING)
-  type: "PLAYING"
+   # Type of status (PLAYING, WATCHING, LISTENING, COMPETING)
+   type: "PLAYING"
 
-  # Format for the status message
-  # Available placeholders: {playerCount}, {maxPlayers}
-  format: "{playerCount}/{maxPlayers} players online"
+   # Format for the status message
+   # Available placeholders: {playerCount}, {maxPlayers}
+   format: "{playerCount}/{maxPlayers} players online"
 
+
+# ======================================
 # Webhook Configuration
+# ======================================
 webhook:
-  # Whether to use webhooks for player messages (shows player avatars and names)
-  enabled: false
+   # Whether to use webhooks for player messages (shows player avatars and names)
+   enabled: false
 
-  # Your Discord webhook URL (KEEP THIS SECRET!)
-  url: "YOUR_WEBHOOK_URL_HERE"
+   # Your Discord webhook URL (KEEP THIS SECRET!)
+   # Get this by editing a channel, going to Integrations > Webhooks
+   url: "YOUR_WEBHOOK_URL_HERE"
 
-  # Default webhook name (used for system messages)
-  name: "DaisySRV"
+   # Default webhook name (used for system messages)
+   name: "DaisySRV"
 
-  # Avatar URL template for players (use {username} as placeholder)
-  avatar-url: "https://www.mc-heads.net/avatar/{username}"
+   # Avatar URL template for players (use {username} as placeholder)
+   avatar-url: "https://www.mc-heads.net/avatar/{username}"
 
+
+# ======================================
 # General Settings
+# ======================================
 settings:
-  # Whether to enable debug logging
-  debug: false
+   # Whether to enable debug logging (verbose - only enable if troubleshooting)
+   debug: false
 
-  # Whether to forward console messages to Discord
-  forward-console: false
 ```
 
 ## Discord Commands
