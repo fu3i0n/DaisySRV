@@ -5,12 +5,13 @@ import cat.daisy.daisySRV.embed.EmbedManager
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands
 import org.bukkit.Bukkit
 import java.util.logging.Level
 
 /**
- * Handles Discord slash commands
+ * Handles Discord slash commands for the DaisySRV plugin
  */
 class DiscordCommandHandler(
     private val plugin: DaisySRV,
@@ -18,16 +19,23 @@ class DiscordCommandHandler(
     private val embedManager: EmbedManager,
 ) : ListenerAdapter() {
     companion object {
-        // Configuration paths
         private const val CONFIG_COMMANDS_ENABLED = "commands.enabled"
         private const val CONFIG_COMMANDS_PLAYERLIST = "commands.playerlist"
         private const val CONFIG_DEBUG = "settings.debug"
+
+        // Command handlers map for faster lookups
+        private val COMMAND_HANDLERS =
+            mapOf<String, (DiscordCommandHandler, SlashCommandInteractionEvent) -> Unit>(
+                "ping" to { handler, event -> handler.handlePingCommand(event) },
+                "players" to { handler, event -> handler.handlePlayerListCommand(event) },
+                "console" to { handler, event -> handler.handleConsoleCommand(event) },
+            )
     }
 
     private var commandsRegistered = false
 
     /**
-     * Registers slash commands with Discord
+     * Registers slash commands with the Discord bot
      */
     fun registerCommands() {
         if (!plugin.config.getBoolean(CONFIG_COMMANDS_ENABLED, true)) {
@@ -47,48 +55,63 @@ class DiscordCommandHandler(
                 commandData.add(Commands.slash("players", "List online players"))
             }
 
-            // Register commands for each guild the bot is in
-            jda.guilds.forEach { guild ->
-                guild.updateCommands().addCommands(commandData).queue(
+            // Add console command
+            commandData.add(
+                Commands
+                    .slash("console", "Execute a server console command")
+                    .addOption(OptionType.STRING, "command", "The command to execute", true),
+            )
+
+            // Register commands globally if no guilds are available
+            if (jda.guilds.isEmpty()) {
+                jda.updateCommands().addCommands(commandData).queue(
                     {
-                        plugin.logger.info("Registered ${commandData.size} Discord slash commands in guild ${guild.name}")
+                        plugin.logger.info("Registered ${commandData.size} global Discord slash commands")
                         commandsRegistered = true
                     },
                     { error ->
-                        plugin.logger.log(Level.WARNING, "Failed to register Discord slash commands in guild ${guild.name}", error)
+                        plugin.logger.log(Level.SEVERE, "Failed to register global commands", error)
                     },
                 )
+            } else {
+                jda.guilds.forEach { guild ->
+                    guild.updateCommands().addCommands(commandData).queue(
+                        {
+                            plugin.logger.info("Registered ${commandData.size} commands for guild: ${guild.name}")
+                            commandsRegistered = true
+                        },
+                        { error ->
+                            plugin.logger.log(
+                                Level.SEVERE,
+                                "Failed to register commands for guild: ${guild.name}",
+                                error,
+                            )
+                        },
+                    )
+                }
             }
 
-            // Always register the listener regardless of command registration success
-            if (!commandsRegistered) {
-                jda.addEventListener(this)
-                plugin.logger.info("Registered slash command listener")
-            }
+            // Register the listener
+            jda.addEventListener(this)
+            plugin.logger.info("Registered slash command listener")
         } catch (e: Exception) {
-            plugin.logger.log(Level.WARNING, "Error registering Discord slash commands", e)
+            plugin.logger.log(Level.SEVERE, "Error registering Discord slash commands", e)
         }
     }
 
     /**
-     * Unregisters slash commands when the plugin is disabled
+     * Unregisters all slash commands
      */
     fun unregisterCommands() {
         if (!commandsRegistered) return
 
         try {
             jda.updateCommands().queue(
-                {
-                    plugin.logger.info("Unregistered Discord slash commands")
-                    // Remove the listener
-                    jda.removeEventListener(this)
-                },
-                { error ->
-                    plugin.logger.warning("Failed to unregister Discord slash commands: ${error.message}")
-                },
+                { plugin.logger.info("Unregistered all global Discord slash commands") },
+                { error -> plugin.logger.log(Level.SEVERE, "Failed to unregister global commands", error) },
             )
         } catch (e: Exception) {
-            plugin.logger.log(Level.WARNING, "Error unregistering Discord slash commands", e)
+            plugin.logger.log(Level.SEVERE, "Error unregistering Discord slash commands", e)
         }
     }
 
@@ -96,88 +119,77 @@ class DiscordCommandHandler(
      * Handles slash command interactions
      */
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
-        val commandName = event.name
-
-        if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
-            plugin.logger.info("Received slash command: $commandName from ${event.user.name}")
-        }
-
-        when (commandName) {
-            "ping" -> handlePingCommand(event)
-            "players" -> handlePlayersCommand(event)
-            else -> plugin.logger.warning("Unknown command: $commandName")
+        val handler = COMMAND_HANDLERS[event.name]
+        if (handler != null) {
+            handler(this, event)
+        } else {
+            event.reply("❌ Unknown command").setEphemeral(true).queue()
         }
     }
 
     /**
-     * Handles the ping command
+     * Handles the /ping command
      */
     private fun handlePingCommand(event: SlashCommandInteractionEvent) {
-        // Defer reply to show "Bot is thinking..."
-        event.deferReply().queue()
-
-        // Respond with pong message
-        val message = "🏓 Pong! Discord Gateway: ${jda.gatewayPing}ms"
-
-        // Fixed: use hook.editOriginal() instead of hookEditOriginal()
-        event.hook.editOriginal(message).queue()
-
-        if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
-            plugin.logger.info("Responded to ping command from ${event.user.name}")
-        }
+        event.reply("🏓 Pong! Discord Gateway: ${jda.gatewayPing}ms").queue()
     }
 
     /**
-     * Handles the players command
+     * Handles the /players command
      */
-    private fun handlePlayersCommand(event: SlashCommandInteractionEvent) {
-        // Defer reply to show "Bot is thinking..."
+    private fun handlePlayerListCommand(event: SlashCommandInteractionEvent) {
         event.deferReply().queue()
 
-        // Get online players
         Bukkit.getScheduler().runTask(
             plugin,
             Runnable {
-                val players = Bukkit.getOnlinePlayers()
-                val playerCount = players.size
+                val onlinePlayers = Bukkit.getOnlinePlayers()
+                val playerCount = onlinePlayers.size
                 val maxPlayers = Bukkit.getMaxPlayers()
+                val playerNames = onlinePlayers.map { it.name }
 
-                // Create player list embed
-                Bukkit.getScheduler().runTaskAsynchronously(
-                    plugin,
-                    Runnable {
-                        val playerNames = players.map { it.name }
-                        val embed = embedManager.createPlayerListEmbed(playerCount, maxPlayers, playerNames)
-
-                        // Fixed: use hook.editOriginalEmbeds() instead of hookEditOriginalEmbeds()
-                        event.hook.editOriginalEmbeds(embed).queue()
-
-                        if (plugin.config.getBoolean(CONFIG_DEBUG, false)) {
-                            plugin.logger.info("Responded to players command from ${event.user.name}")
-                        }
-                    },
-                )
+                // Always use the embed, even if no players are online
+                val embed = embedManager.createPlayerListEmbed(playerCount, maxPlayers, playerNames)
+                event.hook.sendMessageEmbeds(embed).queue()
             },
         )
     }
 
     /**
-     * Sends an error message in response to a slash command
+     * Handles the /console command
      */
-    private fun sendErrorResponse(
-        event: SlashCommandInteractionEvent,
-        errorMessage: String,
-    ) {
-        try {
-            // If the interaction is already acknowledged
-            if (event.isAcknowledged) {
-                // Fixed: use hook.editOriginal() instead of hookEditOriginal()
-                event.hook.editOriginal("❌ Error: $errorMessage").queue()
-            } else {
-                event.reply("❌ Error: $errorMessage").setEphemeral(true).queue()
+    private fun handleConsoleCommand(event: SlashCommandInteractionEvent) {
+        val command =
+            event.getOption("command")?.asString ?: run {
+                event.reply("❌ You must provide a command to execute.").setEphemeral(true).queue()
+                return
             }
-        } catch (e: Exception) {
-            plugin.logger.log(Level.WARNING, "Failed to send error response for slash command", e)
+
+        // Check if the user has the required role
+        val requiredRoleId = plugin.config.getString("console-log.whitelist-role")
+        if (requiredRoleId != null && event.member?.roles?.none { it.id == requiredRoleId } == true) {
+            event.reply("❌ You do not have permission to use this command.").setEphemeral(true).queue()
+            return
         }
+
+        // Acknowledge the interaction
+        event.deferReply(true).queue()
+
+        // Explicitly cast the lambda to Runnable
+        Bukkit.getScheduler().runTask(
+            plugin,
+            Runnable {
+                try {
+                    val success = Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command)
+                    if (success) {
+                        event.hook.sendMessage("✅ Command executed: `$command`").queue()
+                    } else {
+                        event.hook.sendMessage("❌ Failed to execute command: `$command`").queue()
+                    }
+                } catch (e: Exception) {
+                    event.hook.sendMessage("❌ An error occurred while executing the command: ${e.message}").queue()
+                }
+            },
+        )
     }
 }

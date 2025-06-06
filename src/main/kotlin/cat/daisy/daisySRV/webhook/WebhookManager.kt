@@ -96,6 +96,29 @@ class WebhookManager(
     fun isWebhookEnabled(): Boolean = webhookEnabled && !webhookUrl.isNullOrBlank() && !isShuttingDown()
 
     /**
+     * Properly shuts down the WebhookManager and closes HTTP resources
+     * This prevents "zip file closed" errors during plugin shutdown
+     */
+    fun shutdown() {
+        webhookEnabled = false
+
+        // Cancel any pending requests
+        httpClient.dispatcher.cancelAll()
+
+        // Close the HTTP client to release resources
+        httpClient.connectionPool.evictAll()
+        httpClient.dispatcher.executorService.shutdown()
+        try {
+            httpClient.dispatcher.executorService.awaitTermination(2, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            // Just log and continue with shutdown
+            plugin.logger.warning("Interrupted while shutting down webhook client")
+        }
+
+        plugin.logger.info("WebhookManager shutdown completed")
+    }
+
+    /**
      * Validates webhook URL format
      */
     private fun isValidWebhookUrl(url: String?): Boolean {
@@ -218,6 +241,23 @@ class WebhookManager(
     }
 
     /**
+     * Escapes a string for inclusion in JSON
+     *
+     * @param text The text to escape
+     * @return JSON-safe string
+     */
+    private fun escapeJsonString(text: String): String {
+        return text
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\b", "\\b")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+            .replace("\u000C", "\\f") // Form feed
+    }
+
+    /**
      * Sends a webhook request with a message
      */
     private fun sendWebhookRequest(
@@ -236,9 +276,9 @@ class WebhookManager(
             val jsonPayload =
                 """
                 {
-                    "username": "$username",
-                    "avatar_url": "$avatarUrl",
-                    "content": "$message"
+                    "username": "${escapeJsonString(username)}",
+                    "avatar_url": "${escapeJsonString(avatarUrl)}",
+                    "content": "${escapeJsonString(message)}"
                 }
                 """.trimIndent()
 

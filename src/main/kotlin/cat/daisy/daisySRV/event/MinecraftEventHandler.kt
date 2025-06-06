@@ -17,7 +17,9 @@ import org.bukkit.event.player.PlayerAdvancementDoneEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.server.ServerLoadEvent
+import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
+import kotlin.toString
 
 /**
  * Handles Minecraft events and forwards them to Discord
@@ -28,6 +30,15 @@ class MinecraftEventHandler(
     private val embedManager: EmbedManager,
     private val webhookManager: WebhookManager? = null,
 ) : Listener {
+    private val sentAdvancements = ConcurrentHashMap<String, MutableSet<String>>()
+
+    // Cache advancement names and descriptions to avoid expensive reflection calls
+    private val advancementNameCache = ConcurrentHashMap<String, String>()
+    private val advancementDescriptionCache = ConcurrentHashMap<String, String>()
+
+    // Pattern for sanitizing Discord messages - precompile for efficiency
+    private val mentionPattern = Regex("@([\\w-]+)")
+
     companion object {
         // Configuration paths
         private const val CONFIG_EVENTS_PLAYER_JOIN = "events.player-join"
@@ -68,7 +79,7 @@ class MinecraftEventHandler(
         message
             .replace("@everyone", "@\u200Beveryone")
             .replace("@here", "@\u200Bhere")
-            .replace(Regex("@([\\w-]+)"), "@\u200B$1")
+            .replace(mentionPattern, "@\u200B$1")
 
     /**
      * Handles player chat events and forwards them to Discord
@@ -146,26 +157,29 @@ class MinecraftEventHandler(
      */
     @EventHandler(priority = EventPriority.MONITOR)
     fun onPlayerAdvancement(event: PlayerAdvancementDoneEvent) {
-        // Check if advancement events are enabled
         if (!plugin.config.getBoolean(CONFIG_EVENTS_PLAYER_ADVANCEMENT, true)) return
 
         val player = event.player
         val advancement = event.advancement
 
-        // Skip recipe advancements and hidden advancements
         if (isRecipeAdvancement(advancement) || !hasDisplay(advancement)) return
 
-        // Get advancement details
         val advancementKey = advancement.key.key
+
+        // Check if the advancement has already been sent
+        val playerAdvancements = sentAdvancements.computeIfAbsent(player.uniqueId.toString()) { mutableSetOf() }
+        if (playerAdvancements.contains(advancementKey)) return
+
+        // Mark the advancement as sent
+        playerAdvancements.add(advancementKey)
+
         val advancementName = getAdvancementName(advancement)
         val advancementDescription = getAdvancementDescription(advancement)
 
-        // Send embed to Discord
         if (embedManager.areEmbedsEnabled()) {
             val embed = embedManager.createAchievementEmbed(player.name, advancementName, advancementDescription)
             sendEmbedToDiscord(embed)
         } else {
-            // Fallback to text message
             sendSystemMessageToDiscord("${player.name} earned the achievement $advancementName")
         }
     }
@@ -450,6 +464,10 @@ class MinecraftEventHandler(
      * @return The advancement name or key if not found
      */
     private fun getAdvancementName(advancement: Advancement): String {
+        // Check cache first
+        val cachedName = advancementNameCache.get(advancement.key.key)
+        if (cachedName != null) return cachedName
+
         // Try to get the display name, fall back to the key
         try {
             val advancementHandle = advancement.javaClass.getDeclaredField("handle")
@@ -467,18 +485,27 @@ class MinecraftEventHandler(
 
                 // Get the IChatBaseComponent text
                 val textMethod = title.javaClass.getMethod("getString")
-                return textMethod.invoke(title) as String
+                val name = textMethod.invoke(title) as String
+
+                // Cache the result
+                advancementNameCache[advancement.key.key] = name
+                return name
             }
         } catch (e: Exception) {
             // Ignore and use fallback
         }
 
         // Fallback to key
-        return advancement.key.key
-            .split("/")
-            .last()
-            .replace("_", " ")
-            .capitalize()
+        val fallbackName =
+            advancement.key.key
+                .split("/")
+                .last()
+                .replace("_", " ")
+                .capitalize()
+
+        // Cache the fallback result
+        advancementNameCache[advancement.key.key] = fallbackName
+        return fallbackName
     }
 
     /**
@@ -488,6 +515,10 @@ class MinecraftEventHandler(
      * @return The advancement description or empty string if not found
      */
     private fun getAdvancementDescription(advancement: Advancement): String {
+        // Check cache first
+        val cachedDescription = advancementDescriptionCache.get(advancement.key.key)
+        if (cachedDescription != null) return cachedDescription
+
         // Try to get the description, fall back to empty string
         try {
             val advancementHandle = advancement.javaClass.getDeclaredField("handle")
@@ -505,7 +536,11 @@ class MinecraftEventHandler(
 
                 // Get the IChatBaseComponent text
                 val textMethod = description.javaClass.getMethod("getString")
-                return textMethod.invoke(description) as String
+                val desc = textMethod.invoke(description) as String
+
+                // Cache the result
+                advancementDescriptionCache[advancement.key.key] = desc
+                return desc
             }
         } catch (e: Exception) {
             // Ignore and use fallback
