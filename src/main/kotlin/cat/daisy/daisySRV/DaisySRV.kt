@@ -2,6 +2,7 @@ package cat.daisy.daisySRV
 
 import cat.daisy.daisySRV.command.DiscordCommandHandler
 import cat.daisy.daisySRV.embed.EmbedManager
+import cat.daisy.daisySRV.event.MinecraftConsoleHandler
 import cat.daisy.daisySRV.event.MinecraftEventHandler
 import cat.daisy.daisySRV.status.BotStatusManager
 import cat.daisy.daisySRV.webhook.WebhookManager
@@ -51,12 +52,13 @@ class DaisySRV :
         private const val CONNECTION_CHECK_INTERVAL = 6000 // 5 minutes
     }
 
-    private var jda: JDA? = null
+    var jda: JDA? = null
     private var discordChannel: TextChannel? = null
     private var embedManager: EmbedManager? = null
     private var minecraftEventHandler: MinecraftEventHandler? = null
     private var discordCommandHandler: DiscordCommandHandler? = null
     private var botStatusManager: BotStatusManager? = null
+    private var minecraftConsoleHandler: MinecraftConsoleHandler? = null
 
     // Changed from private to internal for access from WebhookManager
     internal var webhookManager: WebhookManager? = null
@@ -95,6 +97,12 @@ class DaisySRV :
 
         // Unregister slash commands
         discordCommandHandler?.unregisterCommands()
+
+        // Shutdown console handler
+        minecraftConsoleHandler?.shutdown()
+
+        // Shutdown webhook manager to properly close HTTP resources
+        webhookManager?.shutdown()
 
         // Shutdown JDA gracefully
         if (jda != null) {
@@ -191,8 +199,10 @@ class DaisySRV :
         minecraftEventHandler = MinecraftEventHandler(this, channel, embedManager!!, webhookManager)
         server.pluginManager.registerEvents(minecraftEventHandler!!, this)
 
+        minecraftConsoleHandler = MinecraftConsoleHandler(this, jda!!, channel)
+
         // Initialize Discord command handler
-        jda?.let { discordCommandHandler = DiscordCommandHandler(this, it, embedManager!!) }
+        discordCommandHandler = DiscordCommandHandler(this, jda!!, embedManager!!)
         discordCommandHandler?.registerCommands()
 
         // Set initial bot status

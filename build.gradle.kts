@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "cat.daisy"
-version = "1.2"
+version = "1.3"
 
 repositories {
     mavenCentral()
@@ -22,6 +22,8 @@ val versions =
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("org.apache.logging.log4j:log4j-api:2.20.0")
+    implementation("org.apache.logging.log4j:log4j-core:2.20.0")
     implementation("net.dv8tion:JDA:5.5.1") {
         exclude(module = "opus-java")
     }

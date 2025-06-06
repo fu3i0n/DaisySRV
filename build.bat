@@ -2,7 +2,7 @@
 SETLOCAL
 
 set plugin=DaisySRV
-set version=1.2
+set version=1.3
 set target="C:\Users\Amari\Desktop\DaisyTests\plugins"
 set source=.\build\libs\%plugin%-%version%-shaded.jar
 set destination=%target%\%plugin%-%version%.jar

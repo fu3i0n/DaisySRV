@@ -17,7 +17,9 @@ import org.bukkit.event.player.PlayerAdvancementDoneEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.server.ServerLoadEvent
+import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
+import kotlin.toString
 
 /**
  * Handles Minecraft events and forwards them to Discord
@@ -28,6 +30,8 @@ class MinecraftEventHandler(
     private val embedManager: EmbedManager,
     private val webhookManager: WebhookManager? = null,
 ) : Listener {
+    private val sentAdvancements = ConcurrentHashMap<String, MutableSet<String>>()
+
     companion object {
         // Configuration paths
         private const val CONFIG_EVENTS_PLAYER_JOIN = "events.player-join"
@@ -146,26 +150,29 @@ class MinecraftEventHandler(
      */
     @EventHandler(priority = EventPriority.MONITOR)
     fun onPlayerAdvancement(event: PlayerAdvancementDoneEvent) {
-        // Check if advancement events are enabled
         if (!plugin.config.getBoolean(CONFIG_EVENTS_PLAYER_ADVANCEMENT, true)) return
 
         val player = event.player
         val advancement = event.advancement
 
-        // Skip recipe advancements and hidden advancements
         if (isRecipeAdvancement(advancement) || !hasDisplay(advancement)) return
 
-        // Get advancement details
         val advancementKey = advancement.key.key
+
+        // Check if the advancement has already been sent
+        val playerAdvancements = sentAdvancements.computeIfAbsent(player.uniqueId.toString()) { mutableSetOf() }
+        if (playerAdvancements.contains(advancementKey)) return
+
+        // Mark the advancement as sent
+        playerAdvancements.add(advancementKey)
+
         val advancementName = getAdvancementName(advancement)
         val advancementDescription = getAdvancementDescription(advancement)
 
-        // Send embed to Discord
         if (embedManager.areEmbedsEnabled()) {
             val embed = embedManager.createAchievementEmbed(player.name, advancementName, advancementDescription)
             sendEmbedToDiscord(embed)
         } else {
-            // Fallback to text message
             sendSystemMessageToDiscord("${player.name} earned the achievement $advancementName")
         }
     }

@@ -8,6 +8,17 @@ discord:
   # The Discord channel ID to send/receive messages
   channel-id: "YOUR_CHANNEL_ID_HERE"
 
+# Console Log Configuration
+console-log:
+  # Whether to forward console messages to Discord
+  enabled: false
+
+  # The Discord role ID that is allowed to use the /console command
+  whitelist-role: "YOUR_ADMIN_ROLE_ID_HERE"
+
+  # The Discord channel ID for console command logs
+  log-channel-id: "YOUR_CONSOLE_LOG_CHANNEL_ID_HERE"
+
 # Message Format Configuration
 format:
   # Format for Discord messages sent to Minecraft
@@ -86,6 +97,3 @@ webhook:
 settings:
   # Whether to enable debug logging
   debug: false
-
-  # Whether to forward console messages to Discord
-  forward-console: false

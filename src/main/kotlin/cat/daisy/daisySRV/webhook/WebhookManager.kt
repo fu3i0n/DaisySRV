@@ -96,6 +96,29 @@ class WebhookManager(
     fun isWebhookEnabled(): Boolean = webhookEnabled && !webhookUrl.isNullOrBlank() && !isShuttingDown()
 
     /**
+     * Properly shuts down the WebhookManager and closes HTTP resources
+     * This prevents "zip file closed" errors during plugin shutdown
+     */
+    fun shutdown() {
+        webhookEnabled = false
+
+        // Cancel any pending requests
+        httpClient.dispatcher.cancelAll()
+
+        // Close the HTTP client to release resources
+        httpClient.connectionPool.evictAll()
+        httpClient.dispatcher.executorService.shutdown()
+        try {
+            httpClient.dispatcher.executorService.awaitTermination(2, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            // Just log and continue with shutdown
+            plugin.logger.warning("Interrupted while shutting down webhook client")
+        }
+
+        plugin.logger.info("WebhookManager shutdown completed")
+    }
+
+    /**
      * Validates webhook URL format
      */
     private fun isValidWebhookUrl(url: String?): Boolean {
