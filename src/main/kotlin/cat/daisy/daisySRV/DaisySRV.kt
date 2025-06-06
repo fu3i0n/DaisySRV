@@ -104,19 +104,25 @@ class DaisySRV :
         // Shutdown webhook manager to properly close HTTP resources
         webhookManager?.shutdown()
 
-        // Shutdown JDA gracefully
-        if (jda != null) {
-            try {
-                logger.info("Shutting down Discord connection...")
-                jda?.shutdown()
-            } catch (e: Exception) {
-                logger.log(Level.WARNING, "Error shutting down JDA", e)
-            }
-        }
-
         // Cancel scheduled tasks
         if (connectionCheckTask != -1) {
             Bukkit.getScheduler().cancelTask(connectionCheckTask)
+        }
+
+        // Shutdown JDA gracefully with timeout
+        if (jda != null) {
+            try {
+                logger.info("Shutting down Discord connection...")
+                // Use shutdownNow instead of shutdown, and wait for it to complete
+                jda?.shutdownNow()
+                // Wait up to 5 seconds for shutdown to complete
+                // This helps prevent "zip file closed" errors during server shutdown
+                Thread.sleep(2000) // Give JDA time to clean up resources
+            } catch (e: Exception) {
+                logger.log(Level.WARNING, "Error shutting down JDA", e)
+            } finally {
+                jda = null // Explicitly set to null to help garbage collection
+            }
         }
 
         logger.info("DaisySRV disabled successfully!")
@@ -246,14 +252,21 @@ class DaisySRV :
                 }
             }
 
-            // Removed 'override' since these don't override any parent methods
-            fun onDisconnect(event: net.dv8tion.jda.api.events.session.SessionDisconnectEvent) {
+            // Add proper event handlers for connection events
+            override fun onSessionDisconnect(event: net.dv8tion.jda.api.events.session.SessionDisconnectEvent) {
                 logger.warning("Disconnected from Discord: ${event.closeCode}")
             }
 
-            // Removed 'override' since these don't override any parent methods
-            fun onReconnect(event: net.dv8tion.jda.api.events.session.SessionRecreateEvent) {
+            override fun onSessionRecreate(event: net.dv8tion.jda.api.events.session.SessionRecreateEvent) {
                 logger.info("Reconnected to Discord")
+
+                // Re-initialize bot status after reconnection
+                updateBotStatus(Bukkit.getOnlinePlayers().size, Bukkit.getMaxPlayers())
+            }
+
+            // Handle connection failures
+            override fun onSessionResume(event: net.dv8tion.jda.api.events.session.SessionResumeEvent) {
+                logger.info("Discord session resumed")
             }
         }
 
@@ -375,6 +388,11 @@ class DaisySRV :
         private val pendingMessages = ConcurrentLinkedQueue<() -> Unit>()
         private val isProcessing = AtomicBoolean(false)
 
+        // Batch processing variables
+        private val maxBatchSize = 10
+        private val processingDelay = 100L // ms between message processing
+        private val maxRetries = 3
+
         fun enqueue(message: () -> Unit) {
             pendingMessages.add(message)
             processQueue()
@@ -387,27 +405,50 @@ class DaisySRV :
                     this@DaisySRV,
                     Runnable {
                         try {
-                            while (pendingMessages.isNotEmpty()) {
+                            var processedCount = 0
+
+                            while (pendingMessages.isNotEmpty() && processedCount < maxBatchSize) {
                                 if (isShuttingDown) {
                                     logger.info("Plugin shutting down, clearing message queue with ${pendingMessages.size} messages")
                                     pendingMessages.clear()
                                     break
                                 }
 
-                                try {
-                                    pendingMessages.poll()?.invoke()
-                                } catch (e: Exception) {
-                                    logger.log(Level.WARNING, "Error processing message in queue", e)
+                                val message = pendingMessages.poll() ?: break
+
+                                // Process with retry logic
+                                var success = false
+                                var retries = 0
+                                var lastError: Exception? = null
+
+                                while (!success && retries < maxRetries) {
+                                    try {
+                                        message.invoke()
+                                        success = true
+                                    } catch (e: Exception) {
+                                        lastError = e
+                                        retries++
+                                        // Exponential backoff for retries
+                                        if (retries < maxRetries) {
+                                            Thread.sleep(100L * (1L shl retries))
+                                        }
+                                    }
                                 }
 
-                                // Small delay to respect rate limits
-                                Thread.sleep(100)
+                                if (!success && lastError != null) {
+                                    logger.log(Level.WARNING, "Failed to process message after $maxRetries retries", lastError)
+                                }
+
+                                processedCount++
+
+                                // Small delay between messages to respect rate limits
+                                Thread.sleep(processingDelay)
                             }
                         } catch (e: Exception) {
                             logger.log(Level.WARNING, "Error in message queue processor", e)
                         } finally {
                             isProcessing.set(false)
-                            // Process any messages that were added while we were processing
+                            // Process any remaining messages if queue isn't empty
                             if (pendingMessages.isNotEmpty()) {
                                 processQueue()
                             }

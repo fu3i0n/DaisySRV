@@ -241,6 +241,23 @@ class WebhookManager(
     }
 
     /**
+     * Escapes a string for inclusion in JSON
+     *
+     * @param text The text to escape
+     * @return JSON-safe string
+     */
+    private fun escapeJsonString(text: String): String {
+        return text
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\b", "\\b")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+            .replace("\u000C", "\\f") // Form feed
+    }
+
+    /**
      * Sends a webhook request with a message
      */
     private fun sendWebhookRequest(
@@ -259,9 +276,9 @@ class WebhookManager(
             val jsonPayload =
                 """
                 {
-                    "username": "$username",
-                    "avatar_url": "$avatarUrl",
-                    "content": "$message"
+                    "username": "${escapeJsonString(username)}",
+                    "avatar_url": "${escapeJsonString(avatarUrl)}",
+                    "content": "${escapeJsonString(message)}"
                 }
                 """.trimIndent()
 

@@ -5,6 +5,7 @@ import net.dv8tion.jda.api.entities.MessageEmbed
 import org.bukkit.configuration.file.FileConfiguration
 import java.awt.Color
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Manages the creation of Discord embeds for various events
@@ -29,6 +30,9 @@ class EmbedManager(
         private const val DEFAULT_COLOR_PLAYERLIST = "#5555FF" // Blue
     }
 
+    // Cache for parsed colors to avoid repeated parsing
+    private val colorCache = ConcurrentHashMap<String, Color>()
+
     /**
      * Checks if embeds are enabled in the configuration
      *
@@ -43,13 +47,23 @@ class EmbedManager(
      * @return A MessageEmbed for the join event
      */
     fun createPlayerJoinEmbed(playerName: String): MessageEmbed =
-        EmbedBuilder()
-            .setColor(parseColor(CONFIG_EMBEDS_COLORS_JOIN, DEFAULT_COLOR_JOIN))
-            .setTitle("Player Joined")
-            .setDescription("**$playerName** joined the server")
-            .setThumbnail("https://www.mc-heads.net/avatar/$playerName")
-            .setTimestamp(Instant.now())
-            .build()
+        try {
+            EmbedBuilder()
+                .setColor(parseColor(CONFIG_EMBEDS_COLORS_JOIN, DEFAULT_COLOR_JOIN))
+                .setTitle("Player Joined")
+                .setDescription("**$playerName** joined the server")
+                .setThumbnail("https://www.mc-heads.net/avatar/$playerName")
+                .setTimestamp(Instant.now())
+                .build()
+        } catch (e: Exception) {
+            // Fallback to a simpler embed if there's an error
+            EmbedBuilder()
+                .setColor(Color.GREEN)
+                .setTitle("Player Joined")
+                .setDescription("**$playerName** joined the server")
+                .setTimestamp(Instant.now())
+                .build()
+        }
 
     /**
      * Creates an embed for a player leave event
@@ -58,13 +72,23 @@ class EmbedManager(
      * @return A MessageEmbed for the leave event
      */
     fun createPlayerLeaveEmbed(playerName: String): MessageEmbed =
-        EmbedBuilder()
-            .setColor(parseColor(CONFIG_EMBEDS_COLORS_LEAVE, DEFAULT_COLOR_LEAVE))
-            .setTitle("Player Left")
-            .setDescription("**$playerName** left the server")
-            .setThumbnail("https://www.mc-heads.net/avatar/$playerName")
-            .setTimestamp(Instant.now())
-            .build()
+        try {
+            EmbedBuilder()
+                .setColor(parseColor(CONFIG_EMBEDS_COLORS_LEAVE, DEFAULT_COLOR_LEAVE))
+                .setTitle("Player Left")
+                .setDescription("**$playerName** left the server")
+                .setThumbnail("https://www.mc-heads.net/avatar/$playerName")
+                .setTimestamp(Instant.now())
+                .build()
+        } catch (e: Exception) {
+            // Fallback to a simpler embed if there's an error
+            EmbedBuilder()
+                .setColor(Color.RED)
+                .setTitle("Player Left")
+                .setDescription("**$playerName** left the server")
+                .setTimestamp(Instant.now())
+                .build()
+        }
 
     /**
      * Creates an embed for an achievement/advancement event
@@ -178,13 +202,16 @@ class EmbedManager(
     ): Color {
         val colorString = config.getString(configPath) ?: defaultColor
 
-        return try {
-            // Handle hex color codes (with or without #)
-            val cleanHex = colorString.replace("#", "")
-            Color.decode("#$cleanHex")
-        } catch (e: Exception) {
-            // If parsing fails, use default
-            Color.decode(defaultColor)
+        // Check if this color is already in the cache
+        return colorCache.computeIfAbsent(colorString) {
+            try {
+                // Handle hex color codes (with or without #)
+                val cleanHex = it.replace("#", "")
+                Color.decode("#$cleanHex")
+            } catch (e: Exception) {
+                // If parsing fails, use default
+                Color.decode(defaultColor)
+            }
         }
     }
 

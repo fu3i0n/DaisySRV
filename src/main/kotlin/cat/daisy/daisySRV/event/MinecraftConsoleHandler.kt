@@ -34,6 +34,28 @@ class MinecraftConsoleHandler(
         private const val MESSAGE_COOLDOWN_MS = 2000
         private const val MAX_BATCH_SIZE = 15
         private const val MESSAGE_BATCH_DELAY = 50L // Ticks (50 ticks = 2.5 seconds)
+
+        // Patterns for message filtering (precompiled for efficiency)
+        private val CONSOLE_LOGGING_PATTERN = Regex("Console logging")
+        private val WEBHOOK_PATTERN = Regex("webhook", RegexOption.IGNORE_CASE)
+        private val STACK_TRACE_PATTERN = Regex("^\\s+at\\s+")
+        private val EXCEPTION_PATTERN = Regex("Exception in thread")
+        private val DISCONNECT_PATTERN = Regex("handleDisconnect")
+
+        // Enhanced filter patterns for common verbose logs
+        private val INFO_PATTERN = Regex("\\[INFO\\]|\\[32m\\[INFO\\]")
+        private val ROUTINE_LOGS_PATTERN =
+            Regex(
+                "(Done preparing level|Running delayed init tasks|Done \\(|Shutdown initiated|Shutdown completed|Starting background profiler|expansion registration|Preparing spawn area|Preparing start region|UUID of player|joined the game|left the game|Player.+?has (disconnected|logged in)|initialized|protocol|Connected)",
+            )
+        private val SPARK_PATTERN = Regex("\\[spark\\]|spark")
+        private val SERVER_ROUTINE_PATTERN =
+            Regex("\\[(ServerLoginPacketListenerImpl|MinecraftServer|DedicatedServer|PlayerList|Server|Player|User Authenticator)\\]")
+        private val COMMON_NOISE_PATTERN =
+            Regex(
+                "(async-profiler|Votifier|PlaceholderAPI|Preparing start region|Loading properties|Starting minecraft server|Default game type|Ready|AdvancedServerListPlus|discord|Reloading ResourceManager)",
+            )
+        private val IP_ADDRESS_PATTERN = Regex("([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3})(:[0-9]{1,5})?")
     }
 
     private var consoleAppender: ConsoleLogAppender? = null
@@ -45,6 +67,9 @@ class MinecraftConsoleHandler(
     private val messageQueue = ConcurrentLinkedQueue<String>()
     private val messageCounter = AtomicInteger(0)
     private var lastMessageTime = 0L
+
+    // StringBuilder pool to reduce memory allocations
+    private val stringBuilderPool = ThreadLocal.withInitial { StringBuilder(MAX_DISCORD_MESSAGE_LENGTH) }
 
     init {
         setupConsoleHandler()
@@ -131,7 +156,9 @@ class MinecraftConsoleHandler(
         if (now - lastMessageTime < MESSAGE_COOLDOWN_MS) return
 
         try {
-            val messagesToSend = StringBuilder()
+            val messagesToSend = stringBuilderPool.get()
+            messagesToSend.setLength(0) // Clear the StringBuilder
+
             val count = messageCounter.getAndSet(0)
             val overflow = count > MAX_BATCH_SIZE
 
@@ -161,13 +188,16 @@ class MinecraftConsoleHandler(
             // Close the code block
             messagesToSend.append("```")
 
+            // Store final message
+            val finalMessage = messagesToSend.toString()
+
             // Send to Discord asynchronously
             val channel = logChannel ?: defaultChannel
             Bukkit.getScheduler().runTaskAsynchronously(
                 plugin,
                 Runnable {
                     try {
-                        channel.sendMessage(messagesToSend.toString()).queue()
+                        channel.sendMessage(finalMessage).queue()
                         lastMessageTime = now
                     } catch (e: Exception) {
                         plugin.logger.log(Level.WARNING, "Failed to send console logs to Discord", e)
@@ -222,7 +252,10 @@ class MinecraftConsoleHandler(
             val remaining = messageQueue.size
 
             if (remaining > 0) {
-                val finalMessage = StringBuilder("```ansi\n[Console] Shutdown - Final $remaining log messages:\n")
+                val finalMessage = stringBuilderPool.get()
+                finalMessage.setLength(0) // Clear the StringBuilder
+
+                finalMessage.append("```ansi\n[Console] Shutdown - Final $remaining log messages:\n")
                 var count = 0
 
                 while (count < 10 && messageQueue.isNotEmpty()) {
@@ -294,18 +327,29 @@ class MinecraftConsoleHandler(
             // Skip messages from our own plugin that would cause recursion
             if (loggerName == "DaisySRV" &&
                 (
-                    message.contains("Console logging") ||
+                    CONSOLE_LOGGING_PATTERN.containsMatchIn(message) ||
                         message.contains("Sent") ||
-                        message.contains("webhook")
+                        WEBHOOK_PATTERN.containsMatchIn(message)
                 )
             ) {
                 return true
             }
 
             // Skip verbose messages
-            if (message.contains("handleDisconnect") ||
-                message.contains("Exception in thread") ||
-                message.contains("at ") // Stack traces usually start with "at "
+            if (DISCONNECT_PATTERN.containsMatchIn(message) ||
+                EXCEPTION_PATTERN.containsMatchIn(message) ||
+                STACK_TRACE_PATTERN.matches(message) // Stack traces usually start with "at "
+            ) {
+                return true
+            }
+
+            // Skip common routine logs
+            if (INFO_PATTERN.containsMatchIn(message) ||
+                ROUTINE_LOGS_PATTERN.containsMatchIn(message) ||
+                SPARK_PATTERN.containsMatchIn(message) ||
+                SERVER_ROUTINE_PATTERN.containsMatchIn(message) ||
+                COMMON_NOISE_PATTERN.containsMatchIn(message) ||
+                IP_ADDRESS_PATTERN.containsMatchIn(message)
             ) {
                 return true
             }

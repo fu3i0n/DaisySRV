@@ -22,6 +22,14 @@ class DiscordCommandHandler(
         private const val CONFIG_COMMANDS_ENABLED = "commands.enabled"
         private const val CONFIG_COMMANDS_PLAYERLIST = "commands.playerlist"
         private const val CONFIG_DEBUG = "settings.debug"
+
+        // Command handlers map for faster lookups
+        private val COMMAND_HANDLERS =
+            mapOf<String, (DiscordCommandHandler, SlashCommandInteractionEvent) -> Unit>(
+                "ping" to { handler, event -> handler.handlePingCommand(event) },
+                "players" to { handler, event -> handler.handlePlayerListCommand(event) },
+                "console" to { handler, event -> handler.handleConsoleCommand(event) },
+            )
     }
 
     private var commandsRegistered = false
@@ -111,11 +119,11 @@ class DiscordCommandHandler(
      * Handles slash command interactions
      */
     override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
-        when (event.name) {
-            "ping" -> handlePingCommand(event)
-            "players" -> handlePlayerListCommand(event)
-            "console" -> handleConsoleCommand(event)
-            else -> event.reply("❌ Unknown command").setEphemeral(true).queue()
+        val handler = COMMAND_HANDLERS[event.name]
+        if (handler != null) {
+            handler(this, event)
+        } else {
+            event.reply("❌ Unknown command").setEphemeral(true).queue()
         }
     }
 
@@ -158,7 +166,7 @@ class DiscordCommandHandler(
             }
 
         // Check if the user has the required role
-        val requiredRoleId = plugin.config.getString("console.console-whitelist-role")
+        val requiredRoleId = plugin.config.getString("console-log.whitelist-role")
         if (requiredRoleId != null && event.member?.roles?.none { it.id == requiredRoleId } == true) {
             event.reply("❌ You do not have permission to use this command.").setEphemeral(true).queue()
             return
