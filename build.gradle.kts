@@ -22,7 +22,7 @@ val versions =
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-    implementation("net.dv8tion:JDA:5.5.1") {
+    implementation("net.dv8tion:JDA:5.6.0") {
         exclude(module = "opus-java")
     }
     ktlint("com.pinterest.ktlint:ktlint-cli:${versions["ktlint"]}") {
