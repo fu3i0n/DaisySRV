@@ -3,7 +3,7 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 val ktlint by configurations.creating
 plugins {
     kotlin("jvm") version "2.2.20"
-    id("com.gradleup.shadow") version "9.2.2"
+    id("com.gradleup.shadow") version "9.3.0"
 }
 
 group = "cat.daisy"
