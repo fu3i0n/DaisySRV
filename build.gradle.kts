@@ -17,7 +17,7 @@ repositories {
 
 val versions =
     mapOf(
-        "ktlint" to "1.7.1",
+        "ktlint" to "1.8.0",
     )
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
